@@ -14,6 +14,8 @@ public enum FilterValue: Sendable, Equatable {
     case string(String)
     case bool(Bool)
     case number(Double)
+    /// Regex pattern with flags (e.g. "pattern" with "i" for case-insensitive).
+    case regex(pattern: String, flags: String)
 }
 
 /// A filter expression within a `[?(...)]` bracket.
@@ -269,11 +271,26 @@ public struct JSONPathSelector: Sendable {
     // MARK: - Regex matching
 
     private func regexMatch(propValue: FilterValue, pattern: FilterValue) -> Bool {
-        guard case .string(let text) = propValue,
-              case .string(let regex) = pattern else {
+        guard case .string(let text) = propValue else {
             return false
         }
-        return (try? NSRegularExpression(pattern: regex, options: []))
+
+        let regexPattern: String
+        var options: NSRegularExpression.Options = []
+
+        switch pattern {
+        case .regex(let p, let flags):
+            regexPattern = p
+            if flags.contains("i") { options.insert(.caseInsensitive) }
+            if flags.contains("m") { options.insert(.anchorsMatchLines) }
+            if flags.contains("s") { options.insert(.dotMatchesLineSeparators) }
+        case .string(let p):
+            regexPattern = p
+        default:
+            return false
+        }
+
+        return (try? NSRegularExpression(pattern: regexPattern, options: options))
             .map { $0.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
             ?? false
     }
@@ -299,6 +316,7 @@ enum JSONPathParser {
         case or               // ||
         case singleQuotedString(String)
         case doubleQuotedString(String)
+        case regexLiteral(pattern: String, flags: String)
         case boolTrue
         case boolFalse
         case number(Double)
@@ -428,7 +446,7 @@ enum JSONPathParser {
                 tokens.append(.doubleQuotedString(str))
 
             case "/":
-                // Parse regex literal /pattern/
+                // Parse regex literal /pattern/flags
                 i += 1
                 var pattern = ""
                 while i < chars.count && chars[i] != "/" {
@@ -444,7 +462,13 @@ enum JSONPathParser {
                     throw AXError.invalidSelector("Unterminated regex literal")
                 }
                 i += 1 // skip closing /
-                tokens.append(.singleQuotedString(pattern))
+                // Consume optional flags: i (case-insensitive), m (multiline), s (dotAll)
+                var flags = ""
+                while i < chars.count && "imsg".contains(chars[i]) {
+                    flags.append(chars[i])
+                    i += 1
+                }
+                tokens.append(.regexLiteral(pattern: pattern, flags: flags))
 
             case " ", "\t", "\n", "\r":
                 i += 1
@@ -624,6 +648,8 @@ enum JSONPathParser {
             return (.string(s), index + 1)
         case .doubleQuotedString(let s):
             return (.string(s), index + 1)
+        case .regexLiteral(let pattern, let flags):
+            return (.regex(pattern: pattern, flags: flags), index + 1)
         case .boolTrue:
             return (.bool(true), index + 1)
         case .boolFalse:
