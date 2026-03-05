@@ -18,6 +18,8 @@ swift test                         # All tests
 swift test --filter <TestName>     # Single test
 ```
 
+**IMPORTANT**: Always use `swift build` / `swift test` — NEVER invoke `swiftc` directly. Direct `swiftc` calls dump `.o`, `.d`, `.dia`, `.swiftdeps` artifacts into the working directory instead of `.build/`. All build output must go through SPM into `.build/`.
+
 ## Platform & Stack
 
 - macOS 14+, Swift 6.0+, Xcode 16+
@@ -51,7 +53,7 @@ Sources/
     Output/                   # TOONEncoder, JSONEncoder
     Skill/                    # Agentic skill install system (see claudedocs/agentic-skills.md)
     Interfaces/               # CLI (ArgumentParser), MCPServer
-  agentax/                    # Executable target (thin entry point)
+  agentax-cli/                # Executable target (thin entry point)
 Tests/AgentAXTests/
 ```
 

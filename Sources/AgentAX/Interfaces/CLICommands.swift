@@ -361,3 +361,122 @@ public struct TestCommand: AsyncParsableCommand {
         1 + element.children.reduce(0) { $0 + countElements($1) }
     }
 }
+
+// MARK: - ServeCommand
+
+/// Start the MCP server (stdio or SSE transport).
+public struct ServeCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "serve",
+        abstract: "Start the MCP server (stdio transport for Claude Code, etc.)"
+    )
+
+    @Option(name: .long, help: "Transport type: stdio or sse")
+    public var transport: String = "stdio"
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("MCP server (\(transport) transport) — not yet implemented")
+        print("Track progress: https://github.com/swiftj/agentax/issues")
+    }
+}
+
+// MARK: - SkillCommand
+
+/// Manage agentic skill installations.
+public struct SkillCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "skill",
+        abstract: "Manage agentic skill installations for AI coding agents",
+        subcommands: [
+            SkillInstallCommand.self,
+            SkillUninstallCommand.self,
+            SkillListCommand.self,
+            SkillUpdateCommand.self,
+            SkillShowCommand.self,
+        ]
+    )
+
+    public init() {}
+}
+
+public struct SkillInstallCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Install agentax skill for an AI coding agent"
+    )
+
+    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
+    public var agent: String
+
+    @Option(name: .long, help: "Install level: project or user")
+    public var level: String = "project"
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("Skill install for \(agent) (level: \(level)) — not yet implemented")
+    }
+}
+
+public struct SkillUninstallCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "uninstall",
+        abstract: "Uninstall agentax skill for an AI coding agent"
+    )
+
+    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
+    public var agent: String
+
+    @Option(name: .long, help: "Install level: project or user")
+    public var level: String = "project"
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("Skill uninstall for \(agent) (level: \(level)) — not yet implemented")
+    }
+}
+
+public struct SkillListCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "list",
+        abstract: "List installed agentax skills"
+    )
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("Skill list — not yet implemented")
+    }
+}
+
+public struct SkillUpdateCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "update",
+        abstract: "Update all installed agentax skills"
+    )
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("Skill update — not yet implemented")
+    }
+}
+
+public struct SkillShowCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "show",
+        abstract: "Show skill content for an agent"
+    )
+
+    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
+    public var agent: String
+
+    public init() {}
+
+    public mutating func run() async throws {
+        print("Skill show for \(agent) — not yet implemented")
+    }
+}

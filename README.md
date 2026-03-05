@@ -12,12 +12,11 @@
   <img src="https://img.shields.io/badge/MCP-COMPATIBLE-8A2BE2?style=flat-square" alt="MCP Compatible">
   <img src="https://img.shields.io/badge/TOON-DEFAULT_OUTPUT-ff6b6b?style=flat-square" alt="TOON Default">
   <img src="https://img.shields.io/badge/Agentic_Skills-5_AGENTS-orange?style=flat-square" alt="Agentic Skills">
-  <img src="https://img.shields.io/badge/Python-ZERO-success?style=flat-square" alt="Zero Python">
 </p>
 
 ---
 
-agentax gives AI coding agents (Claude Code, Gemini CLI, Codex, etc.) full native access to the macOS Accessibility tree — enabling autonomous, deterministic UI testing and validation of SwiftUI and RealityKit applications without screenshots, without vision models, and without Python.
+agentax gives AI coding agents (Claude Code, Gemini CLI, Codex, etc.) full native access to the macOS Accessibility tree — enabling autonomous, deterministic UI testing and validation of SwiftUI and RealityKit applications without screenshots, and without vision models.
 
 ## Why agentax?
 
@@ -29,7 +28,7 @@ Vision-based testing (screenshots fed to multimodal LLMs) is fundamentally flawe
 | **Speed** | Seconds per interaction (capture + encode + API + parse) | Milliseconds (native API) |
 | **Determinism** | Varies with theme, resolution, artifacts | Exact — OS guarantees element identity |
 | **3D awareness** | Blind to RealityKit state | Full access via `AccessibilityComponent.customContent` |
-| **Startup** | Python interpreter + dependency resolution | Native binary, zero overhead |
+| **Startup** | Usually an interpreter + dependency resolution | Native binary, zero overhead |
 
 ## Quick Start
 
@@ -180,7 +179,7 @@ For agentax to test your app effectively:
 
 ## Architecture
 
-agentax calls the macOS Accessibility C API directly from Swift — no PyObjC, no Python:
+agentax calls the macOS latest Accessibility (AX) API directly from Swift:
 
 - **AX Bridge** — Wraps `AXUIElement*` functions for tree traversal and action execution
 - **State Capture** — Recursive AX tree walk with timeout safety, depth limiting, and UUID-based element mapping for O(1) action resolution
