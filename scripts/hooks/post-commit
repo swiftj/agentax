@@ -53,7 +53,7 @@ fi
 SWIFT_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep "\.swift$" | grep -v "^${VERSION_FILE}$")
 if [[ -z "$SWIFT_FILES" ]]; then
     # Version file was already in the commit (manual bump) — skip to tagging
-    NEW_VERSION=$(grep -E 'version: "[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+    NEW_VERSION=$(grep -E 'version\s*[:=]\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
     if [[ -n "$NEW_VERSION" ]]; then
         TAG_NAME="v${NEW_VERSION}"
         if ! git tag -l "$TAG_NAME" | grep -q "$TAG_NAME"; then
@@ -74,7 +74,7 @@ fi
 # ── Version bump ──
 
 # Extract current version from Swift source
-CURRENT_VERSION=$(grep -E 'version: "[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+CURRENT_VERSION=$(grep -E 'version\s*[:=]\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
 if [[ -z "$CURRENT_VERSION" ]]; then
     exit 0
 fi
@@ -112,11 +112,11 @@ esac
 
 NEW_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
 
-# Update version in Swift source
+# Update version in Swift source (matches both `version = "X.Y.Z"` and `version: "X.Y.Z"`)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/version: \"$CURRENT_VERSION\"/version: \"$NEW_VERSION\"/" "$VERSION_FILE"
+    sed -i '' "s/\"$CURRENT_VERSION\"/\"$NEW_VERSION\"/" "$VERSION_FILE"
 else
-    sed -i "s/version: \"$CURRENT_VERSION\"/version: \"$NEW_VERSION\"/" "$VERSION_FILE"
+    sed -i "s/\"$CURRENT_VERSION\"/\"$NEW_VERSION\"/" "$VERSION_FILE"
 fi
 
 # Update README badge if exists
