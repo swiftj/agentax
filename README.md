@@ -3,7 +3,7 @@
 **The fastest, most token-efficient accessibility testing harness for SwiftUI and RealityKit applications.**
 
 <p>
-  <img src="https://img.shields.io/badge/VERSION-0.1.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/VERSION-0.1.1-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Swift-6.0+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift Version">
   <img src="https://img.shields.io/badge/-macOS%2014+-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
   <img src="https://img.shields.io/badge/LICENSE-MIT-green?style=flat-square" alt="License">

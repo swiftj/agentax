@@ -407,7 +407,7 @@ public struct SkillInstallCommand: AsyncParsableCommand {
         abstract: "Install agentax skill for an AI coding agent"
     )
 
-    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
+    @Argument(help: "Agent name: \(SkillConfig.validAgentNames.joined(separator: ", "))")
     public var agent: String
 
     @Option(name: .long, help: "Install level: project or user")
@@ -416,7 +416,17 @@ public struct SkillInstallCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        print("Skill install for \(agent) (level: \(level)) — not yet implemented")
+        guard let agentConfig = SkillConfig.findAgent(name: agent) else {
+            throw SkillError.unknownAgent(agent)
+        }
+        guard let installLevel = InstallLevel(rawValue: level) else {
+            throw SkillError.invalidLevel(level)
+        }
+
+        let manager = SkillManager()
+        try manager.install(agent: agentConfig, level: installLevel)
+        print("Installed agentax skill for \(agentConfig.displayName) (\(installLevel.rawValue) level)")
+        print("  Path: \(agentConfig.path(level: installLevel))")
     }
 }
 
@@ -426,7 +436,7 @@ public struct SkillUninstallCommand: AsyncParsableCommand {
         abstract: "Uninstall agentax skill for an AI coding agent"
     )
 
-    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
+    @Argument(help: "Agent name: \(SkillConfig.validAgentNames.joined(separator: ", "))")
     public var agent: String
 
     @Option(name: .long, help: "Install level: project or user")
@@ -435,7 +445,16 @@ public struct SkillUninstallCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        print("Skill uninstall for \(agent) (level: \(level)) — not yet implemented")
+        guard let agentConfig = SkillConfig.findAgent(name: agent) else {
+            throw SkillError.unknownAgent(agent)
+        }
+        guard let installLevel = InstallLevel(rawValue: level) else {
+            throw SkillError.invalidLevel(level)
+        }
+
+        let manager = SkillManager()
+        try manager.uninstall(agent: agentConfig, level: installLevel)
+        print("Uninstalled agentax skill for \(agentConfig.displayName) (\(installLevel.rawValue) level)")
     }
 }
 
@@ -448,7 +467,32 @@ public struct SkillListCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        print("Skill list — not yet implemented")
+        let manager = SkillManager()
+        let installations = manager.listAll()
+
+        // Header
+        let nameWidth = 15
+        let levelWidth = 9
+        let statusWidth = 11
+        let versionWidth = 10
+        print(
+            "Agent".padding(toLength: nameWidth, withPad: " ", startingAt: 0)
+            + "Level".padding(toLength: levelWidth, withPad: " ", startingAt: 0)
+            + "Status".padding(toLength: statusWidth, withPad: " ", startingAt: 0)
+            + "Version"
+        )
+        print(String(repeating: "-", count: nameWidth + levelWidth + statusWidth + versionWidth))
+
+        for info in installations {
+            let status = info.isInstalled ? "installed" : "-"
+            let version = info.version ?? "-"
+            print(
+                info.agent.displayName.padding(toLength: nameWidth, withPad: " ", startingAt: 0)
+                + info.level.rawValue.padding(toLength: levelWidth, withPad: " ", startingAt: 0)
+                + status.padding(toLength: statusWidth, withPad: " ", startingAt: 0)
+                + version
+            )
+        }
     }
 }
 
@@ -458,10 +502,24 @@ public struct SkillUpdateCommand: AsyncParsableCommand {
         abstract: "Update all installed agentax skills"
     )
 
+    @Argument(help: "Optional agent name to update (updates all if omitted)")
+    public var agent: String?
+
     public init() {}
 
     public mutating func run() async throws {
-        print("Skill update — not yet implemented")
+        let manager = SkillManager()
+
+        if let agentName = agent {
+            guard let agentConfig = SkillConfig.findAgent(name: agentName) else {
+                throw SkillError.unknownAgent(agentName)
+            }
+            try manager.update(agent: agentConfig)
+            print("Updated agentax skill for \(agentConfig.displayName)")
+        } else {
+            try manager.updateAll()
+            print("Updated all installed agentax skills to v\(SkillConfig.version)")
+        }
     }
 }
 
@@ -471,12 +529,28 @@ public struct SkillShowCommand: AsyncParsableCommand {
         abstract: "Show skill content for an agent"
     )
 
-    @Argument(help: "Agent name: claude-code, gemini-cli, codex, antigravity, opencode")
-    public var agent: String
+    @Argument(help: "Agent name: \(SkillConfig.validAgentNames.joined(separator: ", "))")
+    public var agent: String?
 
     public init() {}
 
     public mutating func run() async throws {
-        print("Skill show for \(agent) — not yet implemented")
+        let agentName = agent ?? "claude-code"
+        guard let agentConfig = SkillConfig.findAgent(name: agentName) else {
+            throw SkillError.unknownAgent(agentName)
+        }
+
+        let content: String
+        switch agentConfig.format {
+        case .skillDir:
+            content = SkillContent.skillMD.replacingOccurrences(
+                of: "{{VERSION}}", with: SkillConfig.version
+            )
+        case .agentsMD:
+            content = SkillContent.agentsSectionMD.replacingOccurrences(
+                of: "{{VERSION}}", with: SkillConfig.version
+            )
+        }
+        print(content)
     }
 }
