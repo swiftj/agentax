@@ -118,19 +118,49 @@ public final class AXBridge {
 
         var windows: [UIElement] = []
 
-        // Capture windows
+        // Capture windows — try AXWindows first, filtering out non-window elements
+        // (some apps return AXApplication elements in their AXWindows attribute)
+        var windowRefs: [AXUIElement] = []
         if let windowElements = getChildElements(appRef, attribute: AXTypes.windows) {
-            for windowElement in windowElements {
-                if let uiElement = traverseElement(
-                    windowElement,
-                    depth: 0,
-                    depthLimit: depthLimit,
-                    isMenuBar: false,
-                    startTime: startTime,
-                    timeout: timeout
-                ) {
-                    windows.append(uiElement)
+            for elem in windowElements {
+                let role = getStringAttribute(elem, AXTypes.role)
+                // Accept AXWindow and any non-AXApplication element (sheets, drawers, etc.)
+                if role != AXTypes.applicationRole {
+                    windowRefs.append(elem)
                 }
+            }
+        }
+
+        // Fallback: if AXWindows yielded no usable windows, try AXMainWindow/AXFocusedWindow
+        if windowRefs.isEmpty {
+            if let mainWindow: AXUIElement = getAttribute(appRef, AXTypes.mainWindow) as CFTypeRef? as! AXUIElement? {
+                windowRefs.append(mainWindow)
+            }
+            if let focusedWindow: AXUIElement = getAttribute(appRef, AXTypes.focusedWindow) as CFTypeRef? as! AXUIElement? {
+                windowRefs.append(focusedWindow)
+            }
+        }
+
+        // Last resort: scan AXChildren for window-role elements
+        if windowRefs.isEmpty {
+            for child in getChildren(appRef) {
+                if let role = getStringAttribute(child, AXTypes.role), role == AXTypes.windowRole {
+                    windowRefs.append(child)
+                }
+            }
+        }
+
+        for windowElement in windowRefs {
+            if let uiElement = traverseElement(
+                windowElement,
+                appRef: appRef,
+                depth: 0,
+                depthLimit: depthLimit,
+                isMenuBar: false,
+                startTime: startTime,
+                timeout: timeout
+            ) {
+                windows.append(uiElement)
             }
         }
 
@@ -138,6 +168,7 @@ public final class AXBridge {
         if let menuBar: AXUIElement = getAttribute(appRef, AXTypes.menuBar) as CFTypeRef? as! AXUIElement? {
             if let menuElement = traverseElement(
                 menuBar,
+                appRef: appRef,
                 depth: 0,
                 depthLimit: depthLimit,
                 isMenuBar: true,
@@ -162,6 +193,7 @@ public final class AXBridge {
 
     private func traverseElement(
         _ element: AXUIElement,
+        appRef: AXUIElement,
         depth: Int,
         depthLimit: Int,
         isMenuBar: Bool,
@@ -177,6 +209,12 @@ public final class AXBridge {
 
         // Get role (required)
         guard let role = getStringAttribute(element, AXTypes.role) else {
+            return nil
+        }
+
+        // Cycle detection: skip children that point back to the application element
+        // (some apps return AXApplication as a child of itself, causing infinite recursion)
+        if depth > 0 && role == AXTypes.applicationRole {
             return nil
         }
 
@@ -206,6 +244,7 @@ public final class AXBridge {
         for childRef in childRefs {
             if let childUI = traverseElement(
                 childRef,
+                appRef: appRef,
                 depth: depth + 1,
                 depthLimit: depthLimit,
                 isMenuBar: isMenuBar,

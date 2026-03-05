@@ -697,17 +697,39 @@ public final class AgentAXMCPServer {
 
     // MARK: - Tool Definitions
 
+    // MARK: - Shared description fragments
+
+    /// JSONPath selector syntax reference included in tool descriptions.
+    private nonisolated static let selectorHelp = """
+        JSONPath selector syntax: \
+        $..[?(@.role=='AXButton')] — all buttons (recursive descent). \
+        $..[?(@.identifier=='loginBtn')] — by accessibility identifier. \
+        $..[?(@.role=='AXButton' && @.title=='Submit')] — compound filter. \
+        $..[?(@.label =~ /token|Token/)] — regex match with =~. \
+        $..[?(@.customContent.position_x)] — elements with RealityKit custom data. \
+        Supported operators: == != =~ (regex) && ||. \
+        Values can be 'single-quoted', "double-quoted", true/false, or numbers. \
+        Regex patterns can use /slash/ delimiters or quoted strings.
+        """
+
+    private nonisolated static let formatHelp = "Output format: 'toon' (default, 30-60% fewer tokens than JSON) or 'json'. TOON uses indentation-based key-value pairs."
+
     nonisolated static let allTools: [Tool] = [
         // 1. find_elements
         Tool(
             name: "find_elements",
-            description: "Find UI elements matching a JSONPath selector across all apps or a specific app",
+            description: """
+                Find UI elements matching a JSONPath selector. Returns all matching elements with their role, title, \
+                value, identifier, label, position, size, actions, and RealityKit customContent. \
+                Each element includes a UUID for use with get_element_details or action tools. \
+                \(selectorHelp)
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector (e.g. '$..[?(@.role==\"AXButton\")]')")]),
-                    "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector expression. Examples: '$..[?(@.role==\"AXButton\")]', '$..[?(@.title==\"Submit\")]', '$..[?(@.label =~ /player/i)]'")]),
+                    "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by exact name (e.g. 'Safari', 'Mythiq'). Omit to search all apps.")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("selector")]),
             ]),
@@ -717,13 +739,18 @@ public final class AgentAXMCPServer {
         // 2. find_elements_in_app
         Tool(
             name: "find_elements_in_app",
-            description: "Search for UI elements within a specific application with deeper traversal",
+            description: """
+                Search for UI elements within a specific application. If no selector is provided, returns the full \
+                AX tree for the app. If a selector is provided, filters results. Use this when you know the target \
+                app and want a focused deep search. Returns elements with role, title, value, identifier, label, \
+                position, size, actions, customContent, and UUIDs for follow-up actions.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "app_name": .object(["type": .string("string"), "description": .string("Application name to search within")]),
-                    "selector": .object(["type": .string("string"), "description": .string("Optional JSONPath selector to filter results")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "app_name": .object(["type": .string("string"), "description": .string("Application name to search within (exact match, e.g. 'Safari', 'Mythiq')")]),
+                    "selector": .object(["type": .string("string"), "description": .string("Optional JSONPath selector to filter results. If omitted, returns the full app tree. \(selectorHelp)")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("app_name")]),
             ]),
@@ -733,11 +760,15 @@ public final class AgentAXMCPServer {
         // 3. click_element_by_selector
         Tool(
             name: "click_element_by_selector",
-            description: "Click the first UI element matching a JSONPath selector (AXPress action)",
+            description: """
+                Click the first UI element matching a JSONPath selector by performing AXPress. \
+                Returns OK/FAILED with the element UUID. Use find_elements first to verify the selector \
+                matches the right element before clicking.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element to click")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element to click. Must match at least one element. \(selectorHelp)")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector")]),
@@ -748,12 +779,16 @@ public final class AgentAXMCPServer {
         // 4. click_at_position
         Tool(
             name: "click_at_position",
-            description: "Click at absolute screen coordinates using CGEvent",
+            description: """
+                Click at absolute screen coordinates using CGEvent. Use this when you know the exact position \
+                (e.g. from element position/size data in a previous dump). Coordinates are in screen space \
+                where (0,0) is the top-left of the primary display.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "x": .object(["type": .string("number"), "description": .string("X coordinate (absolute screen position)")]),
-                    "y": .object(["type": .string("number"), "description": .string("Y coordinate (absolute screen position)")]),
+                    "x": .object(["type": .string("number"), "description": .string("X coordinate in absolute screen pixels (0 = left edge of primary display)")]),
+                    "y": .object(["type": .string("number"), "description": .string("Y coordinate in absolute screen pixels (0 = top edge of primary display)")]),
                 ]),
                 "required": .array([.string("x"), .string("y")]),
             ]),
@@ -763,12 +798,16 @@ public final class AgentAXMCPServer {
         // 5. type_text_to_element_by_selector
         Tool(
             name: "type_text_to_element_by_selector",
-            description: "Set the value of a text field or other value-holding element found via JSONPath selector",
+            description: """
+                Set the value of a text field or other value-holding element found via JSONPath selector. \
+                Uses AXSetAttributeValue to set the element's AXValue attribute. Works on text fields, \
+                text areas, combo boxes, and any element that accepts AXValue writes.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the target element")]),
-                    "text": .object(["type": .string("string"), "description": .string("Text to type/set as the element value")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the target text field. \(selectorHelp)")]),
+                    "text": .object(["type": .string("string"), "description": .string("Text to set as the element's value")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector"), .string("text")]),
@@ -779,12 +818,17 @@ public final class AgentAXMCPServer {
         // 6. get_element_details
         Tool(
             name: "get_element_details",
-            description: "Get full details for a specific UI element by its UUID, including customContent",
+            description: """
+                Get full details for a specific UI element by its UUID (from a previous find/dump result). \
+                Returns role, title, value, identifier, label, roleDescription, position, size, enabled, \
+                focused, actions, customContent (RealityKit data), and children. UUIDs are stable only \
+                within a session — they are regenerated on each capture.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "element_id": .object(["type": .string("string"), "description": .string("UUID of the element (from a previous find/dump result)")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "element_id": .object(["type": .string("string"), "description": .string("UUID string of the element (e.g. 'F5E72324-26FA-4557-859A-F43E3BFC0F1F' from a prior result)")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("element_id")]),
             ]),
@@ -794,11 +838,16 @@ public final class AgentAXMCPServer {
         // 7. list_running_applications
         Tool(
             name: "list_running_applications",
-            description: "List all running apps with name, PID, bundle ID, active/hidden state",
+            description: """
+                List all running applications with their name, PID, bundle identifier, active/hidden state. \
+                Use this to discover what apps are running before targeting one. The 'name' field is what you \
+                pass to the 'app' parameter in other tools. Only includes apps with regular activation policy \
+                (excludes background daemons and agents).
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: true)
@@ -807,11 +856,16 @@ public final class AgentAXMCPServer {
         // 8. get_app_overview
         Tool(
             name: "get_app_overview",
-            description: "Quick shallow overview of all apps and their top-level windows",
+            description: """
+                Quick shallow overview (depth 2) of all running apps and their top-level windows. \
+                Shows each app's windows with role, title, identifier, position, and size — but not \
+                deeper children. Use this for a fast scan of the UI landscape. For deeper inspection, \
+                use dump_tree or find_elements_in_app.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: true)
@@ -820,7 +874,12 @@ public final class AgentAXMCPServer {
         // 9. check_accessibility_permissions
         Tool(
             name: "check_accessibility_permissions",
-            description: "Check if accessibility permission is granted for this process",
+            description: """
+                Check if macOS Accessibility permission is granted for this process. Must be granted before \
+                any other tool will work. If denied, the user must enable it in System Settings > Privacy & \
+                Security > Accessibility for the parent app (Terminal, Claude Code, VS Code, etc.). \
+                Call this first if other tools return empty results.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([:]),
@@ -831,11 +890,15 @@ public final class AgentAXMCPServer {
         // 10. get_frontmost_app
         Tool(
             name: "get_frontmost_app",
-            description: "Get the currently focused/frontmost application and its full window tree",
+            description: """
+                Get the currently focused/frontmost application with its complete window and element tree. \
+                Useful when you want to inspect whatever the user is currently looking at without knowing \
+                the app name. Returns the full AX tree for just that app.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: true)
@@ -844,13 +907,17 @@ public final class AgentAXMCPServer {
         // 11. scroll_element
         Tool(
             name: "scroll_element",
-            description: "Scroll within a scroll area element found via JSONPath selector",
+            description: """
+                Scroll within a scroll area element found via JSONPath selector. Generates CGEvent scroll \
+                wheel events at the element's position. Use direction 'up'/'down' for vertical scrolling, \
+                'left'/'right' for horizontal. The amount parameter controls how many lines/units to scroll.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the scroll area")]),
-                    "direction": .object(["type": .string("string"), "description": .string("Scroll direction: up, down, left, right")]),
-                    "amount": .object(["type": .string("integer"), "description": .string("Scroll amount in lines (default: 3)")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the scroll area element. \(selectorHelp)")]),
+                    "direction": .object(["type": .string("string"), "description": .string("Scroll direction: 'up', 'down', 'left', 'right'")]),
+                    "amount": .object(["type": .string("integer"), "description": .string("Number of lines/units to scroll (default: 3)")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector"), .string("direction")]),
@@ -861,12 +928,16 @@ public final class AgentAXMCPServer {
         // 12. activate_app
         Tool(
             name: "activate_app",
-            description: "Bring an application to the foreground by name or bundle ID",
+            description: """
+                Bring an application to the foreground (activate it). Provide either name or bundle_id. \
+                Use this before interacting with an app that may be behind other windows. \
+                Equivalent to clicking the app's Dock icon.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "name": .object(["type": .string("string"), "description": .string("Application name (e.g. 'Safari')")]),
-                    "bundle_id": .object(["type": .string("string"), "description": .string("Bundle identifier (e.g. 'com.apple.Safari')")]),
+                    "name": .object(["type": .string("string"), "description": .string("Application name as shown in list_running_applications (e.g. 'Safari', 'Mythiq')")]),
+                    "bundle_id": .object(["type": .string("string"), "description": .string("Bundle identifier (e.g. 'com.apple.Safari'). Alternative to name.")]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: false)
@@ -875,12 +946,17 @@ public final class AgentAXMCPServer {
         // 13. get_menu_bar_items
         Tool(
             name: "get_menu_bar_items",
-            description: "Get the menu bar items for a specific application",
+            description: """
+                Get the menu bar items for a specific application. Returns the AXMenuBar element and its \
+                children (File, Edit, View, etc.). Each menu item includes its title and available actions. \
+                Note: agentax reads the menu bar with a 2-second timeout to avoid accidentally triggering \
+                menu opening during traversal.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "app_name": .object(["type": .string("string"), "description": .string("Application name")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "app_name": .object(["type": .string("string"), "description": .string("Exact application name (e.g. 'Safari')")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("app_name")]),
             ]),
@@ -890,13 +966,20 @@ public final class AgentAXMCPServer {
         // 14. dump_tree
         Tool(
             name: "dump_tree",
-            description: "Full AX tree dump for all apps or a specific app",
+            description: """
+                Full accessibility tree dump for all apps or a specific app. Returns every element with \
+                role, title, value, identifier, label, position, size, enabled, focused, actions, \
+                customContent (RealityKit data), and children. Each element has a UUID for follow-up actions. \
+                Use depth_limit to control traversal depth (default 50). For large apps, start with a \
+                lower depth_limit (5-10) to get an overview, then go deeper on specific subtrees. \
+                Default output is TOON format (indentation-based, 30-60% fewer tokens than JSON).
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
-                    "depth_limit": .object(["type": .string("integer"), "description": .string("Maximum traversal depth (default: 50)")]),
+                    "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by exact name (e.g. 'Safari'). Omit to dump all apps.")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
+                    "depth_limit": .object(["type": .string("integer"), "description": .string("Maximum traversal depth (default: 50). Use 2-5 for a quick overview, higher for full detail.")]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: true)
@@ -905,15 +988,20 @@ public final class AgentAXMCPServer {
         // 15. wait_for_element
         Tool(
             name: "wait_for_element",
-            description: "Poll until a UI element matching a JSONPath selector appears, with configurable timeout",
+            description: """
+                Poll until a UI element matching a JSONPath selector appears, with configurable timeout. \
+                Essential for async UI transitions — use after clicking a button that opens a sheet/dialog, \
+                navigating to a new view, or waiting for content to load. Returns the matching elements \
+                once found, or an error if timeout expires. The AX tree is re-captured on each poll interval.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to match")]),
-                    "timeout": .object(["type": .string("number"), "description": .string("Timeout in seconds (default: 10)")]),
-                    "interval": .object(["type": .string("number"), "description": .string("Poll interval in seconds (default: 0.5)")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector that should match once the UI transition completes. \(selectorHelp)")]),
+                    "timeout": .object(["type": .string("number"), "description": .string("Maximum wait time in seconds (default: 10)")]),
+                    "interval": .object(["type": .string("number"), "description": .string("Time between polls in seconds (default: 0.5)")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
-                    "format": .object(["type": .string("string"), "description": .string("Output format: toon (default) or json")]),
+                    "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("selector")]),
             ]),
@@ -923,12 +1011,18 @@ public final class AgentAXMCPServer {
         // 16. assert_element_state
         Tool(
             name: "assert_element_state",
-            description: "Verify UI element properties match expected values. Returns PASS/FAIL for agent test loops.",
+            description: """
+                Verify that a UI element's properties match expected values. Returns PASS if all properties \
+                match, FAIL with details for each mismatch. Use this for automated test assertions. \
+                Supported properties: role, title, value, identifier, label, enabled (bool), focused (bool), \
+                and any customContent.* key (e.g. 'customContent.position_x'). For RealityKit entities, \
+                verify 3D state via customContent keys that the app exposes through AccessibilityComponent.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element")]),
-                    "expected": .object(["type": .string("object"), "description": .string("Object with property names as keys and expected values. Supports: role, title, value, identifier, label, enabled, focused, customContent.* keys")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element to verify. \(selectorHelp)")]),
+                    "expected": .object(["type": .string("object"), "description": .string("Object of property names to expected values. Example: {\"role\": \"AXButton\", \"title\": \"Submit\", \"enabled\": true, \"customContent.health\": \"100\"}")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector"), .string("expected")]),
@@ -939,11 +1033,17 @@ public final class AgentAXMCPServer {
         // 17. get_element_custom_content
         Tool(
             name: "get_element_custom_content",
-            description: "Extract RealityKit customContent key-value pairs from a UI element found via selector",
+            description: """
+                Extract RealityKit AccessibilityComponent customContent key-value pairs from a UI element. \
+                RealityKit entities can expose 3D coordinates, physics state, game data, and other \
+                proprietary state through customContent entries. Returns all key-value pairs sorted \
+                alphabetically. The app under test must instrument its entities with AccessibilityComponent \
+                and set customContent — entities without AccessibilityComponent are invisible to the AX tree.
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the RealityKit element. \(selectorHelp)")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector")]),
@@ -954,13 +1054,20 @@ public final class AgentAXMCPServer {
         // 18. snapshot_diff
         Tool(
             name: "snapshot_diff",
-            description: "Capture AX tree, optionally perform an action, capture again, and return the diff. Single-call test primitive.",
+            description: """
+                Single-call test primitive: captures AX tree before, optionally performs an action, captures \
+                after, returns the diff. Shows added/removed apps, changed window counts, element count \
+                changes, new/closed windows, and active state changes. Use this to verify that an action \
+                produced the expected UI change without manually comparing two dumps. If no action_selector \
+                is provided, just captures two snapshots 0.5s apart (useful for detecting animations or \
+                async updates).
+                """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
-                    "action_selector": .object(["type": .string("string"), "description": .string("JSONPath selector for the element to act on (optional)")]),
-                    "action_name": .object(["type": .string("string"), "description": .string("AX action to perform (default: AXPress)")]),
+                    "action_selector": .object(["type": .string("string"), "description": .string("JSONPath selector for the element to act on between snapshots. \(selectorHelp)")]),
+                    "action_name": .object(["type": .string("string"), "description": .string("AX action to perform (default: AXPress). Common actions: AXPress, AXConfirm, AXCancel, AXIncrement, AXDecrement")]),
                 ]),
             ]),
             annotations: .init(readOnlyHint: false)
