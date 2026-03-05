@@ -3,7 +3,7 @@ import AgentAX
 
 @main
 struct AgentAXCLI: AsyncParsableCommand {
-    static let version = "0.1.1"
+    static var version: String { agentaxVersion }
 
     static let configuration = CommandConfiguration(
         commandName: "agentax",
@@ -18,6 +18,16 @@ struct AgentAXCLI: AsyncParsableCommand {
             TestCommand.self,
             ServeCommand.self,
             SkillCommand.self,
+            WaitCommand.self,
+            AssertCommand.self,
+            SnapshotDiffCommand.self,
+            ActivateCommand.self,
+            FrontmostCommand.self,
+            ClickAtCommand.self,
+            TypeCommand.self,
+            DetailsCommand.self,
+            MenuCommand.self,
+            CustomContentCommand.self,
         ]
     )
 

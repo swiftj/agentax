@@ -6,6 +6,7 @@ import Foundation
 public enum ComparisonOp: Sendable {
     case equal
     case notEqual
+    case matchesRegex
 }
 
 /// Values that can appear on the right side of a filter comparison.
@@ -39,7 +40,8 @@ public enum PathSegment: Sendable {
 /// - `$` root
 /// - `.child` child access
 /// - `..` recursive descent
-/// - `[?(@.prop == 'value')]` filter expressions with ==, !=, &&, ||, existence
+/// - `[?(@.prop == 'value')]` filter expressions with ==, !=, =~ (regex), &&, ||, existence
+/// - Both single-quoted `'value'` and double-quoted `"value"` strings
 public struct JSONPathSelector: Sendable {
     public let rawPath: String
     public let segments: [PathSegment]
@@ -170,6 +172,9 @@ public struct JSONPathSelector: Sendable {
             guard let propValue = resolveProperty(property, on: element) else {
                 return op == .notEqual
             }
+            if op == .matchesRegex {
+                return regexMatch(propValue: propValue, pattern: value)
+            }
             let matches = propValue == value
             return op == .equal ? matches : !matches
 
@@ -227,6 +232,9 @@ public struct JSONPathSelector: Sendable {
             guard let propValue = resolveProcessProperty(property, on: process) else {
                 return op == .notEqual
             }
+            if op == .matchesRegex {
+                return regexMatch(propValue: propValue, pattern: value)
+            }
             let matches = propValue == value
             return op == .equal ? matches : !matches
 
@@ -257,6 +265,18 @@ public struct JSONPathSelector: Sendable {
             return nil
         }
     }
+
+    // MARK: - Regex matching
+
+    private func regexMatch(propValue: FilterValue, pattern: FilterValue) -> Bool {
+        guard case .string(let text) = propValue,
+              case .string(let regex) = pattern else {
+            return false
+        }
+        return (try? NSRegularExpression(pattern: regex, options: []))
+            .map { $0.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
+            ?? false
+    }
 }
 
 // MARK: - Parser
@@ -274,9 +294,11 @@ enum JSONPathParser {
         case at               // @
         case eq               // ==
         case neq              // !=
+        case regexMatch       // =~
         case and              // &&
         case or               // ||
         case singleQuotedString(String)
+        case doubleQuotedString(String)
         case boolTrue
         case boolFalse
         case number(Double)
@@ -336,8 +358,11 @@ enum JSONPathParser {
                 if i + 1 < chars.count && chars[i + 1] == "=" {
                     tokens.append(.eq)
                     i += 2
+                } else if i + 1 < chars.count && chars[i + 1] == "~" {
+                    tokens.append(.regexMatch)
+                    i += 2
                 } else {
-                    throw AXError.invalidSelector("Single '=' at position \(i), expected '=='")
+                    throw AXError.invalidSelector("Single '=' at position \(i), expected '==' or '=~'")
                 }
 
             case "!":
@@ -382,6 +407,44 @@ enum JSONPathParser {
                 }
                 i += 1 // skip closing '
                 tokens.append(.singleQuotedString(str))
+
+            case "\"":
+                // Parse double-quoted string
+                i += 1
+                var str = ""
+                while i < chars.count && chars[i] != "\"" {
+                    if chars[i] == "\\" && i + 1 < chars.count {
+                        i += 1
+                        str.append(chars[i])
+                    } else {
+                        str.append(chars[i])
+                    }
+                    i += 1
+                }
+                guard i < chars.count else {
+                    throw AXError.invalidSelector("Unterminated string literal")
+                }
+                i += 1 // skip closing "
+                tokens.append(.doubleQuotedString(str))
+
+            case "/":
+                // Parse regex literal /pattern/
+                i += 1
+                var pattern = ""
+                while i < chars.count && chars[i] != "/" {
+                    if chars[i] == "\\" && i + 1 < chars.count {
+                        i += 1
+                        pattern.append(chars[i])
+                    } else {
+                        pattern.append(chars[i])
+                    }
+                    i += 1
+                }
+                guard i < chars.count else {
+                    throw AXError.invalidSelector("Unterminated regex literal")
+                }
+                i += 1 // skip closing /
+                tokens.append(.singleQuotedString(pattern))
 
             case " ", "\t", "\n", "\r":
                 i += 1
@@ -538,6 +601,10 @@ enum JSONPathParser {
                 i += 1
                 let (value, nextI) = try parseValue(tokens, from: i)
                 return (.comparison(property: property, op: .notEqual, value: value), nextI)
+            case .regexMatch:
+                i += 1
+                let (value, nextI) = try parseValue(tokens, from: i)
+                return (.comparison(property: property, op: .matchesRegex, value: value), nextI)
             default:
                 // Existence check
                 return (.exists(property: property), i)
@@ -554,6 +621,8 @@ enum JSONPathParser {
         }
         switch tokens[index] {
         case .singleQuotedString(let s):
+            return (.string(s), index + 1)
+        case .doubleQuotedString(let s):
             return (.string(s), index + 1)
         case .boolTrue:
             return (.bool(true), index + 1)

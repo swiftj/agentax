@@ -364,21 +364,18 @@ public struct TestCommand: AsyncParsableCommand {
 
 // MARK: - ServeCommand
 
-/// Start the MCP server (stdio or SSE transport).
+/// Start the MCP server (stdio transport).
 public struct ServeCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "serve",
         abstract: "Start the MCP server (stdio transport for Claude Code, etc.)"
     )
 
-    @Option(name: .long, help: "Transport type: stdio or sse")
-    public var transport: String = "stdio"
-
     public init() {}
 
     public mutating func run() async throws {
-        print("MCP server (\(transport) transport) — not yet implemented")
-        print("Track progress: https://github.com/swiftj/agentax/issues")
+        let mcpServer = await AgentAXMCPServer()
+        try await mcpServer.start()
     }
 }
 

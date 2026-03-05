@@ -21,7 +21,7 @@
 #   - gh CLI installed and authenticated (for releases)
 #   - Push access to repository
 
-VERSION_FILE="Sources/agentax-cli/AgentAXCLI.swift"
+VERSION_FILE="Sources/AgentAX/Models/AXTypes.swift"
 GUARD_FILE=".git/VERSION_BUMPING"
 
 # ── Re-entrance guard (amend triggers post-commit again) ──

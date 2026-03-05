@@ -43,7 +43,7 @@ public struct AgentConfig: Sendable {
 /// Central registry of skill configuration and supported agents.
 public enum SkillConfig {
     public static let skillName = "agentax"
-    public static let version = "0.1.0"
+    public static var version: String { agentaxVersion }
 
     public static let agents: [AgentConfig] = [
         AgentConfig(
