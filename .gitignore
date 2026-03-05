@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+Package.resolved
+
+# Build artifacts (should not be in root)
+*.o
+*.d
+*.dia
+*.swiftdeps

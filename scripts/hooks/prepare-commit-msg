@@ -1,0 +1,11 @@
+#!/bin/bash
+# Prepare-commit-msg hook
+#
+# No-op. Version bumping is handled by post-commit via amend,
+# since pre-commit can't read the message and prepare-commit-msg
+# can't stage files into the current commit.
+#
+# Install: Run ./scripts/install-hooks.sh
+
+# Clean up any stale files from old hook versions
+rm -f ".git/VERSION_BUMP_TYPE"

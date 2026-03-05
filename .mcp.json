@@ -1,0 +1,12 @@
+{
+	"mcpServers": {
+		"synapse": {
+			"command": "synapse",
+			"args": ["serve"]
+		},
+		"XcodeBuildMCP": {
+			"command": "npx",
+			"args": ["-y", "xcodebuildmcp@latest", "mcp"]
+		}
+	}
+}

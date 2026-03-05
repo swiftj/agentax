@@ -1,0 +1,11 @@
+#!/bin/bash
+# Pre-commit hook: Reserved for lint/format/test checks
+#
+# Version bumping is handled by post-commit via amend,
+# since pre-commit can't read the commit message and
+# prepare-commit-msg can't stage files.
+#
+# Install: Run ./scripts/install-hooks.sh
+
+# Reserved for swift-format or other checks
+exit 0
