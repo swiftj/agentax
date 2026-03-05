@@ -21,16 +21,42 @@
 #   - gh CLI installed and authenticated (for releases)
 #   - Push access to repository
 
+# ── Configuration ──
 VERSION_FILE="Sources/AgentAX/Models/AXTypes.swift"
 GUARD_FILE=".git/VERSION_BUMPING"
+
+# The exact line pattern in the version file. This MUST match the actual Swift source.
+# Current line: public let agentaxVersion = "X.Y.Z"
+VERSION_GREP='agentaxVersion = "'
+VERSION_SED='s/.*agentaxVersion = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/'
+
+# ── Logging helper ──
+hook_log() {
+    echo "[post-commit] $1"
+}
 
 # ── Re-entrance guard (amend triggers post-commit again) ──
 if [[ -f "$GUARD_FILE" ]]; then
     exit 0
 fi
 
+# Clean up stale guard file (older than 60 seconds = something crashed)
+if [[ -f "$GUARD_FILE" ]]; then
+    GUARD_AGE=$(( $(date +%s) - $(stat -f %m "$GUARD_FILE" 2>/dev/null || echo 0) ))
+    if [[ "$GUARD_AGE" -gt 60 ]]; then
+        hook_log "Removing stale guard file (${GUARD_AGE}s old)"
+        rm -f "$GUARD_FILE"
+    else
+        exit 0
+    fi
+fi
+
 # Only run on main/master branch
-CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    # Detached HEAD — skip
+    exit 0
+fi
 if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
     exit 0
 fi
@@ -40,27 +66,28 @@ COMMIT_MSG=$(git log -1 --pretty=%B)
 
 # Check for skip-version
 if echo "$COMMIT_MSG" | grep -qi '\[skip-version\]'; then
-    echo "Version bump skipped ([skip-version] detected)"
+    hook_log "Version bump skipped ([skip-version] detected)"
     exit 0
 fi
 
 # Only bump for commits that include .swift file changes
-if ! git diff-tree --no-commit-id --name-only -r HEAD | grep -q "\.swift$"; then
+CHANGED_SWIFT=$(git diff-tree --no-commit-id --name-only -r HEAD | grep "\.swift$")
+if [[ -z "$CHANGED_SWIFT" ]]; then
     exit 0
 fi
 
 # Don't bump if the only .swift change is the version file itself (manual correction)
-SWIFT_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep "\.swift$" | grep -v "^${VERSION_FILE}$")
-if [[ -z "$SWIFT_FILES" ]]; then
+OTHER_SWIFT=$(echo "$CHANGED_SWIFT" | grep -v "^${VERSION_FILE}$")
+if [[ -z "$OTHER_SWIFT" ]]; then
     # Version file was already in the commit (manual bump) — skip to tagging
-    NEW_VERSION=$(grep -E 'version\s*[:=]\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+    NEW_VERSION=$(grep "$VERSION_GREP" "$VERSION_FILE" | sed "$VERSION_SED")
     if [[ -n "$NEW_VERSION" ]]; then
         TAG_NAME="v${NEW_VERSION}"
         if ! git tag -l "$TAG_NAME" | grep -q "$TAG_NAME"; then
             COMMIT_SUBJECT=$(git log -1 --pretty=%s)
             git tag -a "$TAG_NAME" -m "$TAG_NAME: $COMMIT_SUBJECT"
-            echo "Created tag: $TAG_NAME"
-            git push origin "$TAG_NAME" 2>/dev/null && echo "Pushed tag: $TAG_NAME"
+            hook_log "Created tag: $TAG_NAME"
+            git push origin "$TAG_NAME" 2>/dev/null && hook_log "Pushed tag: $TAG_NAME"
         fi
     fi
     exit 0
@@ -68,14 +95,22 @@ fi
 
 # Check if version file exists
 if [[ ! -f "$VERSION_FILE" ]]; then
+    hook_log "ERROR: Version file not found: $VERSION_FILE"
     exit 0
 fi
 
-# ── Version bump ──
-
-# Extract current version from Swift source
-CURRENT_VERSION=$(grep -E 'version\s*[:=]\s*"[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+# ── Extract current version ──
+CURRENT_VERSION=$(grep "$VERSION_GREP" "$VERSION_FILE" | sed "$VERSION_SED")
 if [[ -z "$CURRENT_VERSION" ]]; then
+    hook_log "ERROR: Could not extract version from $VERSION_FILE"
+    hook_log "Expected pattern: agentaxVersion = \"X.Y.Z\""
+    hook_log "Actual content: $(grep -n 'agentax' "$VERSION_FILE" | head -3)"
+    exit 0
+fi
+
+# Validate version format
+if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    hook_log "ERROR: Invalid version format: '$CURRENT_VERSION'"
     exit 0
 fi
 
@@ -112,11 +147,21 @@ esac
 
 NEW_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
 
-# Update version in Swift source (matches both `version = "X.Y.Z"` and `version: "X.Y.Z"`)
+# ── Update version in Swift source ──
+# Use exact string replacement to avoid matching other occurrences
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/\"$CURRENT_VERSION\"/\"$NEW_VERSION\"/" "$VERSION_FILE"
+    sed -i '' "s/agentaxVersion = \"$CURRENT_VERSION\"/agentaxVersion = \"$NEW_VERSION\"/" "$VERSION_FILE"
 else
-    sed -i "s/\"$CURRENT_VERSION\"/\"$NEW_VERSION\"/" "$VERSION_FILE"
+    sed -i "s/agentaxVersion = \"$CURRENT_VERSION\"/agentaxVersion = \"$NEW_VERSION\"/" "$VERSION_FILE"
+fi
+
+# Verify the replacement worked
+VERIFY_VERSION=$(grep "$VERSION_GREP" "$VERSION_FILE" | sed "$VERSION_SED")
+if [[ "$VERIFY_VERSION" != "$NEW_VERSION" ]]; then
+    hook_log "ERROR: Version replacement failed! Expected $NEW_VERSION, got '$VERIFY_VERSION'"
+    # Restore the file
+    git checkout -- "$VERSION_FILE"
+    exit 0
 fi
 
 # Update README badge if exists
@@ -130,13 +175,22 @@ if [[ -f "$README_FILE" ]]; then
     git add "$README_FILE"
 fi
 
-# Amend the commit to include the version bump
+# ── Amend the commit to include the version bump ──
 touch "$GUARD_FILE"
+trap 'rm -f "$GUARD_FILE"' EXIT  # Always clean up, even on error
 git add "$VERSION_FILE"
 git commit --amend --no-edit --no-verify
+AMEND_STATUS=$?
 rm -f "$GUARD_FILE"
+trap - EXIT
 
-echo "Version bumped ($BUMP_TYPE): $CURRENT_VERSION -> $NEW_VERSION"
+if [[ $AMEND_STATUS -ne 0 ]]; then
+    hook_log "ERROR: Failed to amend commit with version bump"
+    git checkout -- "$VERSION_FILE"
+    exit 0
+fi
+
+hook_log "Version bumped ($BUMP_TYPE): $CURRENT_VERSION -> $NEW_VERSION"
 
 # ── Tagging and release ──
 
@@ -144,6 +198,7 @@ TAG_NAME="v${NEW_VERSION}"
 
 # Check if tag already exists
 if git tag -l "$TAG_NAME" | grep -q "$TAG_NAME"; then
+    hook_log "Tag $TAG_NAME already exists, skipping"
     exit 0
 fi
 
@@ -151,24 +206,24 @@ COMMIT_SUBJECT=$(git log -1 --pretty=%s)
 git tag -a "$TAG_NAME" -m "$TAG_NAME: $COMMIT_SUBJECT"
 
 if [[ $? -ne 0 ]]; then
-    echo "Warning: Failed to create tag $TAG_NAME"
+    hook_log "Warning: Failed to create tag $TAG_NAME"
     exit 0
 fi
-echo "Created tag: $TAG_NAME"
+hook_log "Created tag: $TAG_NAME"
 
 git push origin "$TAG_NAME" 2>/dev/null
 if [[ $? -ne 0 ]]; then
-    echo "Warning: Failed to push tag $TAG_NAME (will need manual push)"
+    hook_log "Warning: Failed to push tag $TAG_NAME (will need manual push)"
     exit 0
 fi
-echo "Pushed tag: $TAG_NAME"
+hook_log "Pushed tag: $TAG_NAME"
 
 # Determine if we should create a GitHub release
 SHOULD_RELEASE=false
 RELEASE_TYPE="patch"
 
 if echo "$COMMIT_MSG" | grep -qi '\[skip-release\]'; then
-    echo "Release skipped ([skip-release] detected)"
+    hook_log "Release skipped ([skip-release] detected)"
     exit 0
 fi
 
@@ -185,7 +240,7 @@ fi
 
 if [[ "$SHOULD_RELEASE" == "true" ]]; then
     if ! command -v gh &> /dev/null; then
-        echo "Note: gh CLI not found, skipping GitHub release"
+        hook_log "Note: gh CLI not found, skipping GitHub release"
         exit 0
     fi
 
@@ -215,8 +270,8 @@ EOF
         2>/dev/null
 
     if [[ $? -eq 0 ]]; then
-        echo "Created GitHub release: $TAG_NAME"
+        hook_log "Created GitHub release: $TAG_NAME"
     else
-        echo "Warning: Failed to create GitHub release (tag was pushed successfully)"
+        hook_log "Warning: Failed to create GitHub release (tag was pushed successfully)"
     fi
 fi
