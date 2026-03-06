@@ -3,7 +3,7 @@
 **The fastest, most token-efficient accessibility testing harness for SwiftUI and RealityKit applications.**
 
 <p>
-  <img src="https://img.shields.io/badge/VERSION-0.1.2-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/VERSION-0.2.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Swift-6.0+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift Version">
   <img src="https://img.shields.io/badge/-macOS%2014+-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
   <img src="https://img.shields.io/badge/LICENSE-MIT-green?style=flat-square" alt="License">
@@ -69,6 +69,8 @@ Ask Claude Code things like:
 - *"Find all buttons in my app"*
 - *"Click the submit button"*
 - *"Type 'hello' into the search field"*
+- *"Drag the token from (500, 300) to (500, 500)"*
+- *"Press Cmd+S to save"*
 - *"Show me the RealityKit entity state"*
 - *"Test the login flow end-to-end"*
 
@@ -122,7 +124,11 @@ entity.components.set(ax)
 | `find_elements_in_app` | Search within a specific application |
 | `click_element_by_selector` | Click element via JSONPath (uses AXPress) |
 | `click_at_position` | Click at screen coordinates |
+| `double_click_at_position` | Double-click at screen coordinates |
+| `right_click_at_position` | Right-click (context menu) at screen coordinates |
+| `drag` | Drag from one position to another (~60fps interpolation) |
 | `type_text_to_element_by_selector` | Type text into element via JSONPath |
+| `key_combination` | Press key combo with modifiers (e.g. Cmd+S) |
 | `get_element_details` | Full element details including customContent |
 | `list_running_applications` | List all running apps |
 | `get_app_overview` | Quick overview of all apps and windows |
@@ -136,6 +142,8 @@ entity.components.set(ax)
 | `assert_element_state` | Verify properties — pass/fail for test loops |
 | `get_element_custom_content` | Extract RealityKit customContent |
 | `snapshot_diff` | Capture, act, capture, return diff — single-call test |
+
+All tools that accept `app` also accept `app_name` as an alias. Tools with `depth_limit` also accept `max_depth`. Parameters can be passed as numbers or strings (e.g. `"3"` or `3`).
 
 ### JSONPath Queries
 

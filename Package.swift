@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "agentax", targets: ["agentax-cli"]),
         .library(name: "AgentAX", targets: ["AgentAX"]),
+        .library(name: "AgentAXBridge", targets: ["AgentAXBridge"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
@@ -27,9 +28,17 @@ let package = Package(
                 .product(name: "MCP", package: "swift-sdk"),
             ]
         ),
+        .target(
+            name: "AgentAXBridge",
+            dependencies: []
+        ),
         .testTarget(
             name: "AgentAXTests",
             dependencies: ["AgentAX"]
+        ),
+        .testTarget(
+            name: "AgentAXBridgeTests",
+            dependencies: ["AgentAXBridge"]
         ),
     ]
 )

@@ -19,6 +19,7 @@ public final class AgentAXMCPServer {
         self.server = Server(
             name: "agentax",
             version: agentaxVersion,
+            instructions: AgentAXMCPServer.serverInstructions,
             capabilities: .init(
                 resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
@@ -119,12 +120,36 @@ public final class AgentAXMCPServer {
                 return try handleGetElementCustomContent(params)
             case "snapshot_diff":
                 return try handleSnapshotDiff(params)
+            case "drag":
+                return try handleDrag(params)
+            case "double_click_at_position":
+                return try handleDoubleClickAtPosition(params)
+            case "right_click_at_position":
+                return try handleRightClickAtPosition(params)
+            case "key_combination":
+                return try handleKeyCombination(params)
             default:
                 return .init(content: [.text("Unknown tool: \(params.name)")], isError: true)
             }
         } catch {
             return .init(content: [.text("Error: \(error)")], isError: true)
         }
+    }
+
+    // MARK: - Selector Validation
+
+    /// Check for common selector mistakes and return a helpful error if found.
+    private func validateSelector(_ selector: String) -> CallTool.Result? {
+        // Catch @.id usage — UUIDs are ephemeral and will never match across captures
+        if selector.contains("@.id==") || selector.contains("@.id ==" ) {
+            return .init(content: [.text(
+                "Error: Do not use @.id in selectors. Element UUIDs are regenerated on every AX tree capture " +
+                "and will never match in follow-up queries. Use stable attributes instead: " +
+                "@.role, @.title, @.identifier, @.label, @.value, or @.roleDescription. " +
+                "Example: $..[?(@.roleDescription=='minimize button')] or $..[?(@.role=='AXButton' && @.title=='Close')]"
+            )], isError: true)
+        }
+        return nil
     }
 
     // MARK: - Resource Dispatch
@@ -160,10 +185,13 @@ public final class AgentAXMCPServer {
         guard let selectorStr = params.arguments?["selector"]?.stringValue else {
             return .init(content: [.text("Missing required parameter: selector")], isError: true)
         }
+        if let error = validateSelector(selectorStr) { return error }
         let app = params.arguments?["app"]?.stringValue
+            ?? params.arguments?["app_name"]?.stringValue // accept either param name
+        let depthLimit = resolveInt(params, names: ["depth_limit", "max_depth"], default: AXTypes.defaultDepthLimit)
         let format = resolveFormat(params)
 
-        let state = bridge.captureState(appName: app)
+        let state = bridge.captureState(appName: app, depthLimit: depthLimit)
         let selector = try JSONPathSelector(selectorStr)
         let matches = selector.execute(on: state)
 
@@ -174,13 +202,16 @@ public final class AgentAXMCPServer {
 
     // 2. find_elements_in_app
     private func handleFindElementsInApp(_ params: CallTool.Parameters) throws -> CallTool.Result {
-        guard let appName = params.arguments?["app_name"]?.stringValue else {
+        guard let appName = params.arguments?["app_name"]?.stringValue
+            ?? params.arguments?["app"]?.stringValue else { // accept either param name
             return .init(content: [.text("Missing required parameter: app_name")], isError: true)
         }
+        if let sel = params.arguments?["selector"]?.stringValue,
+           let error = validateSelector(sel) { return error }
+        let depthLimit = resolveInt(params, names: ["depth_limit", "max_depth"], default: AXTypes.defaultDepthLimit)
         let format = resolveFormat(params)
 
-        // Deeper traversal for single app
-        let state = bridge.captureState(appName: appName)
+        let state = bridge.captureState(appName: appName, depthLimit: depthLimit)
 
         if let selectorStr = params.arguments?["selector"]?.stringValue {
             let selector = try JSONPathSelector(selectorStr)
@@ -200,7 +231,9 @@ public final class AgentAXMCPServer {
         guard let selectorStr = params.arguments?["selector"]?.stringValue else {
             return .init(content: [.text("Missing required parameter: selector")], isError: true)
         }
+        if let error = validateSelector(selectorStr) { return error }
         let app = params.arguments?["app"]?.stringValue
+            ?? params.arguments?["app_name"]?.stringValue
 
         let state = bridge.captureState(appName: app)
         let selector = try JSONPathSelector(selectorStr)
@@ -227,15 +260,76 @@ public final class AgentAXMCPServer {
         return .init(content: [.text("Clicked at position (\(x), \(y))")])
     }
 
+    // 19. drag
+    private func handleDrag(_ params: CallTool.Parameters) throws -> CallTool.Result {
+        guard let fromX = params.arguments?["from_x"]?.doubleValue ?? params.arguments?["from_x"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: from_x")], isError: true)
+        }
+        guard let fromY = params.arguments?["from_y"]?.doubleValue ?? params.arguments?["from_y"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: from_y")], isError: true)
+        }
+        guard let toX = params.arguments?["to_x"]?.doubleValue ?? params.arguments?["to_x"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: to_x")], isError: true)
+        }
+        guard let toY = params.arguments?["to_y"]?.doubleValue ?? params.arguments?["to_y"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: to_y")], isError: true)
+        }
+        let duration = params.arguments?["duration"]?.doubleValue ?? 0.5
+
+        try inputEvents.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY, duration: duration)
+        return .init(content: [.text("Dragged from (\(fromX), \(fromY)) to (\(toX), \(toY))")])
+    }
+
+    // 20. double_click_at_position
+    private func handleDoubleClickAtPosition(_ params: CallTool.Parameters) throws -> CallTool.Result {
+        guard let x = params.arguments?["x"]?.doubleValue ?? params.arguments?["x"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: x")], isError: true)
+        }
+        guard let y = params.arguments?["y"]?.doubleValue ?? params.arguments?["y"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: y")], isError: true)
+        }
+
+        try inputEvents.doubleClickAtPosition(x: x, y: y)
+        return .init(content: [.text("Double-clicked at position (\(x), \(y))")])
+    }
+
+    // 21. right_click_at_position
+    private func handleRightClickAtPosition(_ params: CallTool.Parameters) throws -> CallTool.Result {
+        guard let x = params.arguments?["x"]?.doubleValue ?? params.arguments?["x"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: x")], isError: true)
+        }
+        guard let y = params.arguments?["y"]?.doubleValue ?? params.arguments?["y"]?.intValue.map(Double.init) else {
+            return .init(content: [.text("Missing required parameter: y")], isError: true)
+        }
+
+        try inputEvents.rightClickAtPosition(x: x, y: y)
+        return .init(content: [.text("Right-clicked at position (\(x), \(y))")])
+    }
+
+    // 22. key_combination
+    private func handleKeyCombination(_ params: CallTool.Parameters) throws -> CallTool.Result {
+        guard let key = params.arguments?["key"]?.stringValue else {
+            return .init(content: [.text("Missing required parameter: key")], isError: true)
+        }
+        let modifierNames = params.arguments?["modifiers"]?.arrayValue?.compactMap { $0.stringValue } ?? []
+        let modifiers = modifierNames.compactMap { KeyModifier(rawValue: $0) }
+
+        try inputEvents.keyCombination(key: key, modifiers: modifiers)
+        let modStr = modifiers.isEmpty ? "" : modifiers.map(\.rawValue).joined(separator: "+") + "+"
+        return .init(content: [.text("Pressed \(modStr)\(key)")])
+    }
+
     // 5. type_text_to_element_by_selector
     private func handleTypeTextToElementBySelector(_ params: CallTool.Parameters) throws -> CallTool.Result {
         guard let selectorStr = params.arguments?["selector"]?.stringValue else {
             return .init(content: [.text("Missing required parameter: selector")], isError: true)
         }
+        if let error = validateSelector(selectorStr) { return error }
         guard let text = params.arguments?["text"]?.stringValue else {
             return .init(content: [.text("Missing required parameter: text")], isError: true)
         }
         let app = params.arguments?["app"]?.stringValue
+            ?? params.arguments?["app_name"]?.stringValue
 
         let state = bridge.captureState(appName: app)
         let selector = try JSONPathSelector(selectorStr)
@@ -403,8 +497,9 @@ public final class AgentAXMCPServer {
     // 14. dump_tree
     private func handleDumpTree(_ params: CallTool.Parameters) throws -> CallTool.Result {
         let app = params.arguments?["app"]?.stringValue
+            ?? params.arguments?["app_name"]?.stringValue
         let format = resolveFormat(params)
-        let depthLimit = params.arguments?["depth_limit"]?.intValue ?? AXTypes.defaultDepthLimit
+        let depthLimit = resolveInt(params, names: ["depth_limit", "max_depth"], default: AXTypes.defaultDepthLimit)
 
         let state = bridge.captureState(appName: app, depthLimit: depthLimit)
         let formatter = OutputFormatter(format: format)
@@ -592,6 +687,16 @@ public final class AgentAXMCPServer {
         return .toon
     }
 
+    /// Resolve an integer parameter that may arrive as a JSON number OR a string (e.g. "3").
+    /// Tries multiple parameter names in order.
+    private func resolveInt(_ params: CallTool.Parameters, names: [String], default defaultValue: Int) -> Int {
+        for name in names {
+            if let v = params.arguments?[name]?.intValue { return v }
+            if let s = params.arguments?[name]?.stringValue, let v = Int(s) { return v }
+        }
+        return defaultValue
+    }
+
     private func formatActionResult(_ result: ActionResult) -> String {
         if result.success {
             return "OK: \(result.action) on \(result.elementId.uuidString)"
@@ -700,6 +805,43 @@ public final class AgentAXMCPServer {
     // MARK: - Shared description fragments
 
     /// JSONPath selector syntax reference included in tool descriptions.
+    // MARK: - Server Instructions
+
+    nonisolated static let serverInstructions = """
+        agentax provides COMPLETE access to the macOS accessibility (AX) tree — the semantic \
+        structure of every visible UI element including role, label, value, identifier, position, \
+        size, enabled/focused state, available actions, and RealityKit 3D custom content.
+
+        IMPORTANT: Always prefer agentax tools over screenshots for UI inspection and testing. \
+        agentax is faster, deterministic, token-efficient (TOON format uses 30-60% fewer tokens \
+        than JSON), and provides data no screenshot can — element identifiers, action lists, \
+        enabled/focused state, and RealityKit 3D coordinates/physics/game state.
+
+        Use screenshots ONLY as a last resort when you need purely visual information that the \
+        AX tree cannot provide (e.g., colors, pixel-level rendering, images, animations). For \
+        ALL other UI inspection — finding elements, reading text, checking state, verifying \
+        layout — use agentax tools instead.
+
+        Recommended workflow:
+        1. dump_tree or find_elements_in_app to understand UI structure
+        2. find_elements with JSONPath selectors to locate specific elements
+        3. click_element_by_selector / type_text_to_element_by_selector to interact
+        4. assert_element_state or snapshot_diff to verify changes
+        5. wait_for_element for async transitions (sheets, navigation, loading)
+
+        CRITICAL: Do NOT use @.id in JSONPath selectors. The 'id' field is a transient UUID \
+        regenerated on every AX tree capture — it will NEVER match in a follow-up query. \
+        Instead, target elements by stable AX attributes: @.role, @.title, @.identifier, \
+        @.label, @.value, or @.roleDescription. For example, to click the minimize button: \
+        $..[?(@.roleDescription=='minimize button')] — NOT $..[?(@.id=='some-uuid')].
+
+        The AX tree gives you EVERYTHING a screenshot does (text content, element positions, \
+        UI hierarchy) PLUS what screenshots cannot (identifiers, actions, enabled state, focus, \
+        custom 3D data) — in structured data, not pixels.
+        """
+
+    // MARK: - Tool Help Constants
+
     private nonisolated static let selectorHelp = """
         JSONPath selector syntax: \
         $..[?(@.role=='AXButton')] — all buttons (recursive descent). \
@@ -709,7 +851,10 @@ public final class AgentAXMCPServer {
         $..[?(@.customContent.position_x)] — elements with RealityKit custom data. \
         Supported operators: == != =~ (regex) && ||. \
         Values can be 'single-quoted', "double-quoted", true/false, or numbers. \
-        Regex patterns can use /slash/ delimiters or quoted strings.
+        Regex patterns can use /slash/ delimiters or quoted strings. \
+        IMPORTANT: Do NOT use @.id in selectors — element UUIDs are regenerated on every \
+        capture and will never match in follow-up queries. Use @.identifier, @.role, @.title, \
+        @.label, or @.value instead — these are stable AX attributes.
         """
 
     private nonisolated static let formatHelp = "Output format: 'toon' (default, 30-60% fewer tokens than JSON) or 'json'. TOON uses indentation-based key-value pairs."
@@ -719,16 +864,18 @@ public final class AgentAXMCPServer {
         Tool(
             name: "find_elements",
             description: """
-                Find UI elements matching a JSONPath selector. Returns all matching elements with their role, title, \
-                value, identifier, label, position, size, actions, and RealityKit customContent. \
+                Find UI elements matching a JSONPath selector — use this instead of taking a screenshot \
+                to locate buttons, text, fields, or any UI element. Returns all matching elements with \
+                role, title, value, identifier, label, position, size, actions, and RealityKit customContent. \
                 Each element includes a UUID for use with get_element_details or action tools. \
                 \(selectorHelp)
                 """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector expression. Examples: '$..[?(@.role==\"AXButton\")]', '$..[?(@.title==\"Submit\")]', '$..[?(@.label =~ /player/i)]'")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector expression. Examples: '$..[?(@.role==\"AXButton\")]', '$..[?(@.title==\"Submit\")]', '$..[?(@.label =~ /player/i)]'. Do NOT use @.id — UUIDs are ephemeral.")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by exact name (e.g. 'Safari', 'Mythiq'). Omit to search all apps.")]),
+                    "depth_limit": .object(["type": .string("integer"), "description": .string("Maximum AX tree traversal depth (default: 50). Use 2-5 for a quick overview.")]),
                     "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("selector")]),
@@ -740,16 +887,18 @@ public final class AgentAXMCPServer {
         Tool(
             name: "find_elements_in_app",
             description: """
-                Search for UI elements within a specific application. If no selector is provided, returns the full \
-                AX tree for the app. If a selector is provided, filters results. Use this when you know the target \
-                app and want a focused deep search. Returns elements with role, title, value, identifier, label, \
-                position, size, actions, customContent, and UUIDs for follow-up actions.
+                Search for UI elements within a specific application — use this instead of a screenshot when \
+                you need to understand an app's UI. If no selector is provided, returns the full AX tree \
+                (complete UI structure). If a selector is provided, filters results. Returns elements with \
+                role, title, value, identifier, label, position, size, actions, customContent, and UUIDs \
+                for follow-up actions. More informative than a screenshot and costs fewer tokens.
                 """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
                     "app_name": .object(["type": .string("string"), "description": .string("Application name to search within (exact match, e.g. 'Safari', 'Mythiq')")]),
                     "selector": .object(["type": .string("string"), "description": .string("Optional JSONPath selector to filter results. If omitted, returns the full app tree. \(selectorHelp)")]),
+                    "depth_limit": .object(["type": .string("integer"), "description": .string("Maximum AX tree traversal depth (default: 50). Use 2-5 for a quick overview.")]),
                     "format": .object(["type": .string("string"), "description": .string(formatHelp)]),
                 ]),
                 "required": .array([.string("app_name")]),
@@ -892,8 +1041,9 @@ public final class AgentAXMCPServer {
             name: "get_frontmost_app",
             description: """
                 Get the currently focused/frontmost application with its complete window and element tree. \
-                Useful when you want to inspect whatever the user is currently looking at without knowing \
-                the app name. Returns the full AX tree for just that app.
+                Use this instead of a screenshot to see what the user is currently looking at — returns \
+                the full structured AX tree for the active app, which is faster and more informative than \
+                a screenshot. Includes all text, element roles, identifiers, values, and available actions.
                 """,
             inputSchema: .object([
                 "type": .string("object"),
@@ -967,12 +1117,14 @@ public final class AgentAXMCPServer {
         Tool(
             name: "dump_tree",
             description: """
-                Full accessibility tree dump for all apps or a specific app. Returns every element with \
-                role, title, value, identifier, label, position, size, enabled, focused, actions, \
-                customContent (RealityKit data), and children. Each element has a UUID for follow-up actions. \
-                Use depth_limit to control traversal depth (default 50). For large apps, start with a \
-                lower depth_limit (5-10) to get an overview, then go deeper on specific subtrees. \
-                Default output is TOON format (indentation-based, 30-60% fewer tokens than JSON).
+                PREFERRED over screenshots for understanding UI state. Full accessibility tree dump \
+                for all apps or a specific app. Returns every element with role, title, value, identifier, \
+                label, position, size, enabled, focused, actions, customContent (RealityKit 3D data), and \
+                children. Each element has a UUID for follow-up actions. Provides everything visible in a \
+                screenshot PLUS element identifiers, action lists, enabled/focused state, and custom data — \
+                in structured format, not pixels. Use depth_limit to control traversal depth (default 50). \
+                For large apps, start with a lower depth_limit (5-10) to get an overview, then go deeper \
+                on specific subtrees. Default output is TOON format (30-60% fewer tokens than JSON).
                 """,
             inputSchema: .object([
                 "type": .string("object"),
@@ -1069,6 +1221,90 @@ public final class AgentAXMCPServer {
                     "action_selector": .object(["type": .string("string"), "description": .string("JSONPath selector for the element to act on between snapshots. \(selectorHelp)")]),
                     "action_name": .object(["type": .string("string"), "description": .string("AX action to perform (default: AXPress). Common actions: AXPress, AXConfirm, AXCancel, AXIncrement, AXDecrement")]),
                 ]),
+            ]),
+            annotations: .init(readOnlyHint: false)
+        ),
+
+        // 19. drag
+        Tool(
+            name: "drag",
+            description: """
+                Drag from one screen position to another. Generates mouse-down, smooth interpolated \
+                mouse-drag events (~60fps), and mouse-up. Use for drag-and-drop, slider manipulation, \
+                reordering lists, moving tokens on a game board, resizing by dragging handles, etc. \
+                Coordinates are absolute screen pixels. Use dump_tree or find_elements to get element \
+                positions first, then compute center points for drag start/end.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "from_x": .object(["type": .string("number"), "description": .string("Start X coordinate (screen pixels)")]),
+                    "from_y": .object(["type": .string("number"), "description": .string("Start Y coordinate (screen pixels)")]),
+                    "to_x": .object(["type": .string("number"), "description": .string("End X coordinate (screen pixels)")]),
+                    "to_y": .object(["type": .string("number"), "description": .string("End Y coordinate (screen pixels)")]),
+                    "duration": .object(["type": .string("number"), "description": .string("Duration in seconds (default: 0.5). Longer = smoother/slower drag.")]),
+                ]),
+                "required": .array([.string("from_x"), .string("from_y"), .string("to_x"), .string("to_y")]),
+            ]),
+            annotations: .init(readOnlyHint: false)
+        ),
+
+        // 20. double_click_at_position
+        Tool(
+            name: "double_click_at_position",
+            description: """
+                Double-click at an absolute screen position. Use for selecting words in text fields, \
+                opening files in Finder, or any action requiring a double-click.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "x": .object(["type": .string("number"), "description": .string("X coordinate (screen pixels)")]),
+                    "y": .object(["type": .string("number"), "description": .string("Y coordinate (screen pixels)")]),
+                ]),
+                "required": .array([.string("x"), .string("y")]),
+            ]),
+            annotations: .init(readOnlyHint: false)
+        ),
+
+        // 21. right_click_at_position
+        Tool(
+            name: "right_click_at_position",
+            description: """
+                Right-click (context menu click) at an absolute screen position. Use for opening \
+                context menus on UI elements.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "x": .object(["type": .string("number"), "description": .string("X coordinate (screen pixels)")]),
+                    "y": .object(["type": .string("number"), "description": .string("Y coordinate (screen pixels)")]),
+                ]),
+                "required": .array([.string("x"), .string("y")]),
+            ]),
+            annotations: .init(readOnlyHint: false)
+        ),
+
+        // 22. key_combination
+        Tool(
+            name: "key_combination",
+            description: """
+                Press a key combination (e.g. Cmd+S, Ctrl+C, Shift+Tab). Use for keyboard shortcuts, \
+                navigation, and text editing. The key parameter is a key name (a-z, 0-9, return, tab, \
+                escape, space, delete, up, down, left, right, f1-f12, etc.). Modifiers are: command, \
+                shift, control, option.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "key": .object(["type": .string("string"), "description": .string("Key name (e.g. 's', 'return', 'tab', 'escape', 'f5', 'up', 'down')")]),
+                    "modifiers": .object([
+                        "type": .string("array"),
+                        "items": .object(["type": .string("string"), "enum": .array([.string("command"), .string("shift"), .string("control"), .string("option")])]),
+                        "description": .string("Modifier keys to hold (e.g. ['command', 'shift'] for Cmd+Shift)")
+                    ]),
+                ]),
+                "required": .array([.string("key")]),
             ]),
             annotations: .init(readOnlyHint: false)
         ),

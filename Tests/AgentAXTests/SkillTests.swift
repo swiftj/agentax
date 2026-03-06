@@ -226,7 +226,7 @@ struct SkillContentTests {
     }
 
     @Test(
-        "toolReferenceMD mentions all 18 MCP tools",
+        "toolReferenceMD mentions all 22 MCP tools",
         arguments: [
             // Core 9 tools
             "find_elements",
@@ -248,6 +248,11 @@ struct SkillContentTests {
             "assert_element_state",
             "get_element_custom_content",
             "snapshot_diff",
+            // Input tools
+            "drag",
+            "double_click_at_position",
+            "right_click_at_position",
+            "key_combination",
         ]
     )
     func toolReferenceMDContainsTool(toolName: String) {

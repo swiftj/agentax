@@ -651,6 +651,105 @@ public struct MenuCommand: AsyncParsableCommand {
     }
 }
 
+// MARK: - InspectCommand
+
+/// Dump ALL AX attributes for a matched element. Useful for debugging
+/// RealityKit visibility issues or discovering available attributes.
+public struct InspectCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "inspect",
+        abstract: "Dump all AX attributes for a matched element (debug tool)"
+    )
+
+    @Argument(help: "JSONPath selector or app name (with --pid)")
+    public var selector: String
+
+    @Option(name: .long, help: "Filter to a specific application by name")
+    public var app: String?
+
+    public init() {}
+
+    public mutating func run() async throws {
+        let selectorExpr = selector
+        let appFilter = app
+
+        let result: String = try await MainActor.run {
+            let bridge = AXBridge()
+            let state = bridge.captureState(appName: appFilter)
+            let jsonPathSelector = try JSONPathSelector(selectorExpr)
+            let matches = jsonPathSelector.execute(on: state)
+
+            guard let element = matches.first else {
+                throw AXError.noMatchingElements(selectorExpr)
+            }
+
+            // Find the live AXUIElement ref
+            guard let axRef = bridge.findElement(id: element.id) else {
+                return "Element found in tree but no live AX ref available"
+            }
+
+            // Enumerate ALL attributes on this element
+            var attrNames: CFArray?
+            let result = AXUIElementCopyAttributeNames(axRef, &attrNames)
+            guard result == .success, let names = attrNames as? [String] else {
+                return "Failed to enumerate attributes (error: \(result.rawValue))"
+            }
+
+            var lines: [String] = [
+                "Inspect: \(element.role) (id: \(element.id))",
+                "  title: \(element.title ?? "<nil>")",
+                "  label: \(element.label ?? "<nil>")",
+                "  identifier: \(element.identifier ?? "<nil>")",
+                "",
+                "All AX Attributes (\(names.count)):",
+            ]
+
+            for name in names.sorted() {
+                var value: CFTypeRef?
+                let attrResult = AXUIElementCopyAttributeValue(axRef, name as CFString, &value)
+                if attrResult == .success, let val = value {
+                    let desc = InspectCommand.describeAXValue(val)
+                    lines.append("  \(name): \(desc)")
+                } else {
+                    lines.append("  \(name): <error \(attrResult.rawValue)>")
+                }
+            }
+
+            return lines.joined(separator: "\n")
+        }
+
+        print(result)
+    }
+
+    /// Produce a human-readable description of an AX attribute value.
+    private static func describeAXValue(_ value: CFTypeRef) -> String {
+        if let str = value as? String { return str }
+        if let num = value as? NSNumber { return num.stringValue }
+        if let arr = value as? [Any] { return "[\(arr.count) items]" }
+        if let dict = value as? [String: Any] {
+            let pairs = dict.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+            return "{\(pairs)}"
+        }
+        // Try AXValue (CGPoint, CGSize, CGRect)
+        if CFGetTypeID(value) == AXValueGetTypeID() {
+            let axVal = value as! AXValue
+            var point = CGPoint.zero
+            if AXValueGetValue(axVal, .cgPoint, &point) {
+                return "(\(point.x), \(point.y))"
+            }
+            var size = CGSize.zero
+            if AXValueGetValue(axVal, .cgSize, &size) {
+                return "\(size.width) x \(size.height)"
+            }
+            var rect = CGRect.zero
+            if AXValueGetValue(axVal, .cgRect, &rect) {
+                return "(\(rect.origin.x), \(rect.origin.y), \(rect.size.width), \(rect.size.height))"
+            }
+        }
+        return "\(value)"
+    }
+}
+
 // MARK: - CustomContentCommand
 
 /// Extract RealityKit customContent key-value pairs from matched elements.

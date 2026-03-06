@@ -29,6 +29,10 @@
 | `assert_element_state` | Verify element properties match expected values — returns pass/fail for agent test loops |
 | `get_element_custom_content` | Extract RealityKit `customContent` key-value pairs from a specific element |
 | `snapshot_diff` | Capture AX tree, perform action, capture again, return diff — single-call test primitive |
+| `drag` | Drag from one screen position to another with smooth interpolation (~60fps) |
+| `double_click_at_position` | Double-click at absolute screen coordinates |
+| `right_click_at_position` | Right-click (context menu click) at absolute screen coordinates |
+| `key_combination` | Press a key combination with modifiers (e.g. Cmd+S, Ctrl+C) |
 
 ## MCP Server Resources
 

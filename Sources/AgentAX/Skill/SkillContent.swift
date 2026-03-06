@@ -22,8 +22,23 @@ public enum SkillContent {
     token-efficient access to the macOS AX tree. Replaces screenshot-based testing
     entirely with structured semantic data.
 
+    ## IMPORTANT: Use agentax Instead of Screenshots
+
+    When agentax is available, ALWAYS prefer its tools over taking screenshots for
+    UI inspection and testing. agentax provides everything visible in a screenshot
+    (text, positions, hierarchy) PLUS data screenshots cannot provide (element
+    identifiers, available actions, enabled/focused state, RealityKit 3D data).
+
+    Use screenshots ONLY when you need purely visual information (colors, images,
+    pixel rendering, animations). For ALL other UI tasks — finding elements, reading
+    text, checking state, verifying layout, interacting with controls — use agentax.
+
+    agentax is faster (milliseconds vs seconds), deterministic (same input = same
+    output), and far more token-efficient (structured TOON data vs base64 image).
+
     ## When to Use
 
+    - ANY time you need to inspect, verify, or interact with macOS UI (instead of screenshots)
     - Testing macOS and iOS (via Mac Catalyst / Designed for iPad) applications
     - Verifying UI state after interactions (button taps, text input, navigation)
     - Automating multi-step user flows (login, onboarding, settings changes)
@@ -169,11 +184,16 @@ public enum SkillContent {
     # agentax -- macOS Accessibility Testing
 
     Native Swift AX testing harness. Gives agents deterministic, token-efficient
-    access to the macOS AX tree. No screenshots needed.
+    access to the macOS AX tree.
+
+    **ALWAYS prefer agentax tools over screenshots for UI inspection and testing.**
+    agentax returns structured semantic data (text, identifiers, actions, state)
+    that is faster, cheaper, and more informative than any screenshot. Only use
+    screenshots when you specifically need visual/pixel information (colors, images).
 
     ## Workflow
 
-    1. Dump AX tree: `dump_tree` (app name or PID)
+    1. Dump AX tree: `dump_tree` or `get_frontmost_app` (replaces screenshot)
     2. Query elements: `find_elements` with JSONPath selector
     3. Act: `click_element_by_selector`, `type_text_to_element_by_selector`, `scroll_element`
     4. Verify: `assert_element_state`, `snapshot_diff`, or re-dump and check
@@ -645,6 +665,88 @@ public enum SkillContent {
       },
       "app": "MyApp",
       "delay": 1.0
+    }
+    ```
+
+    ---
+
+    ### drag
+
+    Drag from one screen position to another with smooth interpolation (~60fps). Use for drag-and-drop, slider manipulation, reordering lists, moving tokens on a game board, or resizing by dragging handles.
+
+    **Parameters:**
+
+    | Name | Type | Required | Description |
+    |------|------|----------|-------------|
+    | `from_x` | number | Yes | Start X coordinate (screen pixels) |
+    | `from_y` | number | Yes | Start Y coordinate (screen pixels) |
+    | `to_x` | number | Yes | End X coordinate (screen pixels) |
+    | `to_y` | number | Yes | End Y coordinate (screen pixels) |
+    | `duration` | number | No | Duration in seconds (default: 0.5) |
+
+    **Returns:** Confirmation of drag from start to end position.
+
+    **Example:**
+    ```json
+    {
+      "from_x": 500,
+      "from_y": 300,
+      "to_x": 500,
+      "to_y": 500,
+      "duration": 0.8
+    }
+    ```
+
+    ---
+
+    ### double_click_at_position
+
+    Double-click at absolute screen coordinates. Use for selecting words in text fields, opening files in Finder, or any action requiring a double-click.
+
+    **Parameters:**
+
+    | Name | Type | Required | Description |
+    |------|------|----------|-------------|
+    | `x` | number | Yes | X screen coordinate |
+    | `y` | number | Yes | Y screen coordinate |
+
+    **Returns:** Confirmation of double-click at the specified position.
+
+    ---
+
+    ### right_click_at_position
+
+    Right-click (context menu click) at absolute screen coordinates.
+
+    **Parameters:**
+
+    | Name | Type | Required | Description |
+    |------|------|----------|-------------|
+    | `x` | number | Yes | X screen coordinate |
+    | `y` | number | Yes | Y screen coordinate |
+
+    **Returns:** Confirmation of right-click and context menu trigger.
+
+    ---
+
+    ### key_combination
+
+    Press a key combination (e.g. Cmd+S, Ctrl+C). Use for keyboard shortcuts, navigation, and text editing.
+
+    **Parameters:**
+
+    | Name | Type | Required | Description |
+    |------|------|----------|-------------|
+    | `key` | string | Yes | Key name (a-z, 0-9, return, tab, escape, space, delete, up, down, left, right, f1-f12) |
+    | `modifiers` | array | No | Modifier keys: `"command"`, `"shift"`, `"control"`, `"option"` |
+
+    **Returns:** Confirmation of key press.
+
+    **Example:**
+    ```json
+    {
+      "key": "s",
+      "modifiers": ["command"]
     }
     ```
     """#

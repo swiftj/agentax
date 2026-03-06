@@ -255,8 +255,10 @@ public final class AXBridge {
             }
         }
 
-        // Skip zero-size leaf nodes
-        if hasZeroSize && childElements.isEmpty {
+        // Skip zero-size leaf nodes UNLESS they carry meaningful accessibility data.
+        // RealityKit bridge elements are 1x1 or 0x0 but have labels/customContent.
+        let hasAccessibilityData = label != nil || !customContent.isEmpty || identifier != nil
+        if hasZeroSize && childElements.isEmpty && !hasAccessibilityData {
             return nil
         }
 
@@ -338,12 +340,80 @@ public final class AXBridge {
         return value as? [AXUIElement]
     }
 
-    /// Extract custom accessibility content (used by RealityKit AccessibilityComponent).
+    /// Extract custom accessibility content (used by RealityKit AccessibilityComponent
+    /// and SwiftUI .accessibilityCustomContent).
     private func getCustomContent(_ element: AXUIElement) -> [String: String] {
-        // AXCustomContent is an array of dictionaries with "label" and "value" keys
-        guard let value = getAttribute(element, "AXCustomContent") else { return [:] }
-        guard let contentArray = value as? [[String: Any]] else { return [:] }
+        var rawValue: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, "AXCustomContent" as CFString, &rawValue)
+        guard result == .success, let value = rawValue else { return [:] }
 
+        // Direct array of dictionaries (some apps return this directly)
+        if let contentArray = value as? [[String: Any]] {
+            return parseCustomContentArray(contentArray)
+        }
+
+        // SwiftUI on macOS returns AXCustomContent as NSKeyedArchiver binary plist (CFData).
+        // The archive contains AXCustomContent objects with "label" and "value" string refs.
+        if CFGetTypeID(value) == CFDataGetTypeID() {
+            let data = unsafeBitCast(value, to: CFData.self) as Data
+            return parseKeyedArchiverCustomContent(data)
+        }
+
+        return [:]
+    }
+
+    /// Parse NSKeyedArchiver-encoded AXCustomContent data.
+    /// The archive contains an array of AXCustomContent objects, each with "label" and "value"
+    /// keys that reference string values in the $objects flat array via CFKeyedArchiverUID indices.
+    private func parseKeyedArchiverCustomContent(_ data: Data) -> [String: String] {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let archive = plist as? [String: Any],
+              let objects = archive["$objects"] as? [Any] else {
+            return [:]
+        }
+
+        // Resolve a keyed archiver UID to its index in $objects.
+        // CFKeyedArchiverUID description format: "<CFKeyedArchiverUID ...>{value = N}"
+        func resolveUID(_ uid: Any?) -> Int? {
+            guard let uid else { return nil }
+            let desc = "\(uid)"
+            // Extract the integer value from the UID description
+            if let range = desc.range(of: "value = "),
+               let endRange = desc.range(of: "}", range: range.upperBound..<desc.endIndex) {
+                return Int(desc[range.upperBound..<endRange.lowerBound])
+            }
+            // Direct integer (some formats)
+            if let n = uid as? Int { return n }
+            return nil
+        }
+
+        func resolveString(_ uid: Any?) -> String? {
+            guard let idx = resolveUID(uid), idx >= 0, idx < objects.count else { return nil }
+            return objects[idx] as? String
+        }
+
+        var result: [String: String] = [:]
+
+        // Find AXCustomContent entries in the objects array.
+        // Each is a dictionary with "label" -> UID and "value" -> UID keys.
+        for obj in objects {
+            guard let dict = obj as? [String: Any],
+                  dict["label"] != nil,
+                  dict["value"] != nil,
+                  // AXCustomContent objects also have "importance" and "attributedLabel"
+                  dict["importance"] != nil else {
+                continue
+            }
+            if let label = resolveString(dict["label"]),
+               let value = resolveString(dict["value"]) {
+                result[label] = value
+            }
+        }
+
+        return result
+    }
+
+    private func parseCustomContentArray(_ contentArray: [[String: Any]]) -> [String: String] {
         var result: [String: String] = [:]
         for item in contentArray {
             if let key = item["label"] as? String,

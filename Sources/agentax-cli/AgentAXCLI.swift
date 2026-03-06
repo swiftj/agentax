@@ -28,6 +28,7 @@ struct AgentAXCLI: AsyncParsableCommand {
             DetailsCommand.self,
             MenuCommand.self,
             CustomContentCommand.self,
+            InspectCommand.self,
         ]
     )
 
