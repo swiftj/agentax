@@ -313,6 +313,35 @@ final class OutputTests: XCTestCase {
 
     // MARK: - Token Efficiency Test
 
+    func testResolveFormatDefaultsTOON() throws {
+        // Simulate MCP call with no format parameter — should default to TOON
+        let formatter = OutputFormatter() // no format arg = default
+        let state = Self.makeSystemState()
+        let output = try formatter.format(state)
+
+        // TOON output: no JSON braces, uses key: value pairs
+        XCTAssertFalse(output.contains("{"), "Default output should be TOON, not JSON")
+        XCTAssertFalse(output.contains("}"), "Default output should be TOON, not JSON")
+        XCTAssertTrue(output.contains("role: AXButton"), "TOON output should contain 'role: AXButton'")
+        XCTAssertTrue(output.contains("name: Safari"), "TOON output should contain process name")
+    }
+
+    func testResolveFormatExplicitJSON() throws {
+        // When format is explicitly "json", output should be JSON
+        let formatter = OutputFormatter(format: .json)
+        let state = Self.makeSystemState()
+        let output = try formatter.format(state)
+
+        XCTAssertTrue(output.contains("{"), "Explicit JSON format should produce JSON")
+        XCTAssertTrue(output.contains("\"role\""), "JSON output should have quoted keys")
+    }
+
+    func testResolveFormatInvalidFallsBackToTOON() throws {
+        // Invalid format string should fall back to TOON
+        let format = OutputFormat(rawValue: "xml") ?? .toon
+        XCTAssertEqual(format, .toon, "Invalid format should fall back to TOON")
+    }
+
     func testTOONIsShorterThanJSON() throws {
         let state = Self.makeSystemState()
         let toonOutput = try OutputFormatter(format: .toon).format(state)

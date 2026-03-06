@@ -3,7 +3,7 @@
 **The fastest, most token-efficient accessibility testing harness for AI Agents for native SwiftUI and RealityKit applications.**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/VERSION-0.2.1-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/VERSION-0.2.2-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Swift-6.0+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift Version">
   <img src="https://img.shields.io/badge/-macOS%2014+-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
   <img src="https://img.shields.io/badge/LICENSE-MIT-green?style=flat-square" alt="License">
@@ -124,7 +124,7 @@ $..[?(@.customContent.health=='80%')]      # By specific key-value
 |------|-------------|
 | `find_elements` | Find UI elements matching a JSONPath selector |
 | `find_elements_in_app` | Search within a specific application |
-| `click_element_by_selector` | Click element via JSONPath (uses AXPress) |
+| `click_element_by_selector` | Perform AX action on element via JSONPath (default: AXPress, supports custom actions) |
 | `click_at_position` | Click at screen coordinates |
 | `double_click_at_position` | Double-click at screen coordinates |
 | `right_click_at_position` | Right-click (context menu) at screen coordinates |
@@ -144,6 +144,7 @@ $..[?(@.customContent.health=='80%')]      # By specific key-value
 | `assert_element_state` | Verify properties — pass/fail for test loops |
 | `get_element_custom_content` | Extract customContent key-value pairs |
 | `snapshot_diff` | Capture, act, capture, return diff — single-call test |
+| `perform_action` | Perform any named AX action on an element (custom or standard) |
 
 All tools that accept `app` also accept `app_name` as an alias. Tools with `depth_limit` also accept `max_depth`. Parameters can be passed as numbers or strings (e.g. `"3"` or `3`).
 

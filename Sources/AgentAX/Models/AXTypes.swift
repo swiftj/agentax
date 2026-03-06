@@ -1,7 +1,7 @@
 import Foundation
 
 /// Single source of truth for the agentax version.
-public let agentaxVersion = "0.2.1"
+public let agentaxVersion = "0.2.2"
 
 /// Constants for AX attribute and action names used throughout the bridge.
 public enum AXTypes {

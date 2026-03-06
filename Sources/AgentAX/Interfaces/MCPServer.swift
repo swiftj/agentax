@@ -128,6 +128,8 @@ public final class AgentAXMCPServer {
                 return try handleRightClickAtPosition(params)
             case "key_combination":
                 return try handleKeyCombination(params)
+            case "perform_action":
+                return try handlePerformAction(params)
             default:
                 return .init(content: [.text("Unknown tool: \(params.name)")], isError: true)
             }
@@ -234,6 +236,7 @@ public final class AgentAXMCPServer {
         if let error = validateSelector(selectorStr) { return error }
         let app = params.arguments?["app"]?.stringValue
             ?? params.arguments?["app_name"]?.stringValue
+        let action = params.arguments?["action"]?.stringValue ?? AXTypes.pressAction
 
         let state = bridge.captureState(appName: app)
         let selector = try JSONPathSelector(selectorStr)
@@ -243,7 +246,31 @@ public final class AgentAXMCPServer {
             return .init(content: [.text("No element found matching selector: \(selectorStr)")], isError: true)
         }
 
-        let result = try actionExecutor.click(elementId: first.id)
+        let result = try actionExecutor.performAction(elementId: first.id, action: action)
+        return .init(content: [.text(formatActionResult(result))])
+    }
+
+    // 23. perform_action
+    private func handlePerformAction(_ params: CallTool.Parameters) throws -> CallTool.Result {
+        guard let selectorStr = params.arguments?["selector"]?.stringValue else {
+            return .init(content: [.text("Missing required parameter: selector")], isError: true)
+        }
+        guard let action = params.arguments?["action"]?.stringValue else {
+            return .init(content: [.text("Missing required parameter: action")], isError: true)
+        }
+        if let error = validateSelector(selectorStr) { return error }
+        let app = params.arguments?["app"]?.stringValue
+            ?? params.arguments?["app_name"]?.stringValue
+
+        let state = bridge.captureState(appName: app)
+        let selector = try JSONPathSelector(selectorStr)
+        let matches = selector.execute(on: state)
+
+        guard let first = matches.first else {
+            return .init(content: [.text("No element found matching selector: \(selectorStr)")], isError: true)
+        }
+
+        let result = try actionExecutor.performAction(elementId: first.id, action: action)
         return .init(content: [.text(formatActionResult(result))])
     }
 
@@ -826,8 +853,14 @@ public final class AgentAXMCPServer {
         1. dump_tree or find_elements_in_app to understand UI structure
         2. find_elements with JSONPath selectors to locate specific elements
         3. click_element_by_selector / type_text_to_element_by_selector to interact
-        4. assert_element_state or snapshot_diff to verify changes
-        5. wait_for_element for async transitions (sheets, navigation, loading)
+        4. perform_action for custom named actions (e.g. 'Open Actions', 'Move North')
+        5. assert_element_state or snapshot_diff to verify changes
+        6. wait_for_element for async transitions (sheets, navigation, loading)
+
+        Custom actions: Many apps expose custom named actions beyond standard AX actions. \
+        Use get_element_details to see an element's 'actions' list, then invoke any action \
+        by name via perform_action or click_element_by_selector with the 'action' parameter. \
+        Examples: game actions ('Move North', 'Attack'), app actions ('Open Actions', 'Export').
 
         CRITICAL: Do NOT use @.id in JSONPath selectors. The 'id' field is a transient UUID \
         regenerated on every AX tree capture — it will NEVER match in a follow-up query. \
@@ -918,14 +951,17 @@ public final class AgentAXMCPServer {
         Tool(
             name: "click_element_by_selector",
             description: """
-                Click the first UI element matching a JSONPath selector by performing AXPress. \
-                Returns OK/FAILED with the element UUID. Use find_elements first to verify the selector \
-                matches the right element before clicking.
+                Perform an AX action on the first UI element matching a JSONPath selector. \
+                Defaults to AXPress (click) but supports any named action the element exposes — \
+                including custom actions like 'Open Actions', 'Move North', etc. Use find_elements \
+                or get_element_details first to see the element's available actions list. \
+                Returns OK/FAILED with the element UUID.
                 """,
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element to click. Must match at least one element. \(selectorHelp)")]),
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element. Must match at least one element. \(selectorHelp)")]),
+                    "action": .object(["type": .string("string"), "description": .string("AX action to perform (default: AXPress). Use any action from the element's actions list — standard (AXPress, AXConfirm, AXCancel, AXIncrement, AXDecrement, AXShowMenu) or custom (e.g. 'Open Actions', 'Move North').")]),
                     "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
                 ]),
                 "required": .array([.string("selector")]),
@@ -1315,6 +1351,30 @@ public final class AgentAXMCPServer {
                 "required": .array([.string("key")]),
             ]),
             annotations: .init(readOnlyHint: false)
+        ),
+
+        // 23. perform_action
+        Tool(
+            name: "perform_action",
+            description: """
+                Perform any named AX action on a UI element found via JSONPath selector. Unlike \
+                click_element_by_selector (which defaults to AXPress), this tool REQUIRES an explicit \
+                action name. Use this for custom actions exposed by the application — such as game \
+                actions ('Open Actions', 'Move North', 'Attack'), app-specific actions, or standard \
+                AX actions (AXPress, AXConfirm, AXCancel, AXIncrement, AXDecrement, AXShowMenu, \
+                AXRaise). First use get_element_details or find_elements to discover an element's \
+                available actions, then invoke the desired action by name.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "selector": .object(["type": .string("string"), "description": .string("JSONPath selector to find the element. Must match at least one element. \(selectorHelp)")]),
+                    "action": .object(["type": .string("string"), "description": .string("Exact action name to perform. Must match one of the element's supported actions (e.g. 'AXPress', 'Open Actions', 'Move North').")]),
+                    "app": .object(["type": .string("string"), "description": .string("Filter to a specific app by name")]),
+                ]),
+                "required": .array([.string("selector"), .string("action")]),
+            ]),
+            annotations: .init(readOnlyHint: false, destructiveHint: true)
         ),
     ]
 }

@@ -63,7 +63,7 @@ public enum SkillContent {
     |------|-------------|
     | `find_elements` | Find UI elements matching a JSONPath selector |
     | `find_elements_in_app` | Search within a specific application (filtered, deeper traversal) |
-    | `click_element_by_selector` | Click element found via JSONPath (uses AXPress) |
+    | `click_element_by_selector` | Perform AX action on element via JSONPath (default: AXPress, supports custom actions) |
     | `click_at_position` | Click at screen coordinates (x, y) |
     | `type_text_to_element_by_selector` | Type text into element found via JSONPath |
     | `get_element_details` | Get full details for a specific element including customContent |
@@ -84,6 +84,7 @@ public enum SkillContent {
     | `assert_element_state` | Verify element properties match expected values (pass/fail) |
     | `get_element_custom_content` | Extract RealityKit customContent key-value pairs from an element |
     | `snapshot_diff` | Capture tree, perform action, capture again, return diff |
+    | `perform_action` | Perform any named AX action on an element (custom or standard) |
 
     ## TOON Format
 
@@ -747,6 +748,31 @@ public enum SkillContent {
     {
       "key": "s",
       "modifiers": ["command"]
+    }
+    ```
+
+    ### perform_action
+
+    Perform any named AX action on an element found via JSONPath selector. Use for custom actions
+    exposed by applications (game actions, app-specific actions) or standard AX actions. First use
+    `get_element_details` or `find_elements` to discover an element's available actions list.
+
+    **Parameters:**
+
+    | Name | Type | Required | Description |
+    |------|------|----------|-------------|
+    | `selector` | string | Yes | JSONPath selector to find the element |
+    | `action` | string | Yes | Exact action name (e.g. `"AXPress"`, `"Open Actions"`, `"Move North"`) |
+    | `app` | string | No | Filter to a specific app by name |
+
+    **Returns:** OK/FAILED with element UUID and action performed.
+
+    **Example:**
+    ```json
+    {
+      "selector": "$..[?(@.label =~ /Chimera/)]",
+      "action": "Open Actions",
+      "app": "Mythiq"
     }
     ```
     """#
