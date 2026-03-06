@@ -810,12 +810,12 @@ public final class AgentAXMCPServer {
     nonisolated static let serverInstructions = """
         agentax provides COMPLETE access to the macOS accessibility (AX) tree — the semantic \
         structure of every visible UI element including role, label, value, identifier, position, \
-        size, enabled/focused state, available actions, and RealityKit 3D custom content.
+        size, enabled/focused state, available actions, and customContent key-value data.
 
         IMPORTANT: Always prefer agentax tools over screenshots for UI inspection and testing. \
         agentax is faster, deterministic, token-efficient (TOON format uses 30-60% fewer tokens \
         than JSON), and provides data no screenshot can — element identifiers, action lists, \
-        enabled/focused state, and RealityKit 3D coordinates/physics/game state.
+        enabled/focused state, and custom application data.
 
         Use screenshots ONLY as a last resort when you need purely visual information that the \
         AX tree cannot provide (e.g., colors, pixel-level rendering, images, animations). For \
@@ -835,9 +835,16 @@ public final class AgentAXMCPServer {
         @.label, @.value, or @.roleDescription. For example, to click the minimize button: \
         $..[?(@.roleDescription=='minimize button')] — NOT $..[?(@.id=='some-uuid')].
 
+        RealityKit note: On macOS, RealityView content (3D entities) is NOT directly visible \
+        in the AX tree. However, the SwiftUI controls surrounding the RealityView (initiative \
+        lists, toolbars, labels, buttons) ARE fully accessible and contain rich semantic data. \
+        Use these SwiftUI elements to understand and interact with the application state. \
+        SwiftUI views that use .accessibilityCustomContent() DO surface customContent in the \
+        AX tree — use $..[?(@.customContent)] to find them.
+
         The AX tree gives you EVERYTHING a screenshot does (text content, element positions, \
         UI hierarchy) PLUS what screenshots cannot (identifiers, actions, enabled state, focus, \
-        custom 3D data) — in structured data, not pixels.
+        custom data) — in structured data, not pixels.
         """
 
     // MARK: - Tool Help Constants
@@ -848,7 +855,8 @@ public final class AgentAXMCPServer {
         $..[?(@.identifier=='loginBtn')] — by accessibility identifier. \
         $..[?(@.role=='AXButton' && @.title=='Submit')] — compound filter. \
         $..[?(@.label =~ /token|Token/)] — regex match with =~. \
-        $..[?(@.customContent.position_x)] — elements with RealityKit custom data. \
+        $..[?(@.customContent)] — any element with custom content data. \
+        $..[?(@.customContent.position_x)] — elements with a specific custom content key. \
         Supported operators: == != =~ (regex) && ||. \
         Values can be 'single-quoted', "double-quoted", true/false, or numbers. \
         Regex patterns can use /slash/ delimiters or quoted strings. \

@@ -303,12 +303,24 @@ struct JSONPathExecutionTests {
         // Eject (from Finder) should not appear
     }
 
-    @Test("CustomContent existence check")
-    func customContentExists() throws {
+    @Test("CustomContent existence check (dotted key)")
+    func customContentExistsDottedKey() throws {
         let state = realityKitState()
         let selector = try JSONPathSelector("$..[?(@.customContent.position_x)]")
         let results = selector.execute(on: state)
         #expect(results.count == 2)
+    }
+
+    @Test("CustomContent existence check (bare property)")
+    func customContentExistsBare() throws {
+        let state = realityKitState()
+        let selector = try JSONPathSelector("$..[?(@.customContent)]")
+        let results = selector.execute(on: state)
+        // Should match elements that have non-empty customContent
+        #expect(results.count >= 2, "Expected at least 2 elements with customContent")
+        for result in results {
+            #expect(!result.customContent.isEmpty)
+        }
     }
 
     @Test("CustomContent value comparison")

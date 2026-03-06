@@ -221,6 +221,13 @@ public struct JSONPathSelector: Sendable {
             return .bool(element.isFocused)
         case "depth":
             return .number(Double(element.depth))
+        case "customContent":
+            // Existence check: return non-nil when the dictionary is non-empty
+            return element.customContent.isEmpty ? nil : .string("\(element.customContent.count) entries")
+        case "children":
+            return element.children.isEmpty ? nil : .string("\(element.children.count) children")
+        case "actions":
+            return element.actions.isEmpty ? nil : .string("\(element.actions.count) actions")
         default:
             return nil
         }

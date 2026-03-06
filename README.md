@@ -1,14 +1,14 @@
-# agentax
+# AgentAX
 
-**The fastest, most token-efficient accessibility testing harness for SwiftUI and RealityKit applications.**
+**The fastest, most token-efficient accessibility testing harness for AI Agents for native SwiftUI and RealityKit applications.**
 
-<p>
+<p align="center">
   <img src="https://img.shields.io/badge/VERSION-0.2.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Swift-6.0+-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift Version">
   <img src="https://img.shields.io/badge/-macOS%2014+-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
   <img src="https://img.shields.io/badge/LICENSE-MIT-green?style=flat-square" alt="License">
 </p>
-<p>
+<p align="center">
   <img src="https://img.shields.io/badge/MCP-COMPATIBLE-8A2BE2?style=flat-square" alt="MCP Compatible">
   <img src="https://img.shields.io/badge/TOON-DEFAULT_OUTPUT-ff6b6b?style=flat-square" alt="TOON Default">
   <img src="https://img.shields.io/badge/Agentic_Skills-5_AGENTS-orange?style=flat-square" alt="Agentic Skills">
@@ -16,18 +16,18 @@
 
 ---
 
-agentax gives AI coding agents (Claude Code, Gemini CLI, Codex, etc.) full native access to the macOS Accessibility tree — enabling autonomous, deterministic UI testing and validation of SwiftUI and RealityKit applications without screenshots, and without vision models.
+AgentAX gives AI coding agents (Claude Code, Gemini CLI, Codex, etc.) full native access to the macOS Accessibility tree — enabling autonomous, deterministic UI testing and validation of SwiftUI and RealityKit applications without screenshots, and without vision models.
 
-## Why agentax?
+## Why AgentAX?
 
-Vision-based testing (screenshots fed to multimodal LLMs) is fundamentally flawed for automated agent testing:
+Vision-based testing (screenshots fed to multimodal LLMs) is fundamentally flawed and inefficient for automated agent testing:
 
-| | Vision-based | agentax |
+| | Vision-based | AgentAX |
 |---|---|---|
 | **Token cost** | Thousands per screenshot | ~10x fewer via AX tree |
 | **Speed** | Seconds per interaction (capture + encode + API + parse) | Milliseconds (native API) |
 | **Determinism** | Varies with theme, resolution, artifacts | Exact — OS guarantees element identity |
-| **3D awareness** | Blind to RealityKit state | Full access via `AccessibilityComponent.customContent` |
+| **3D awareness** | Blind to RealityKit state | Reads SwiftUI `.accessibilityCustomContent` data |
 | **Startup** | Usually an interpreter + dependency resolution | Native binary, zero overhead |
 
 ## Quick Start
@@ -42,11 +42,11 @@ swift build
 
 ### Set Up Accessibility Permissions
 
-agentax requires macOS Accessibility permissions on the **parent application**:
+AgentAX requires macOS Accessibility permissions on the **parent application**:
 
 `System Settings > Privacy & Security > Accessibility`
 
-Add whichever app runs agentax — Terminal, VS Code, Claude Code, etc.
+Add whichever app runs AgentAX — Terminal, VS Code, Claude Code, etc.
 
 ### Configure Claude Code
 
@@ -69,9 +69,9 @@ Ask Claude Code things like:
 - *"Find all buttons in my app"*
 - *"Click the submit button"*
 - *"Type 'hello' into the search field"*
-- *"Drag the token from (500, 300) to (500, 500)"*
+- *"Drag from (500, 300) to (500, 500)"*
 - *"Press Cmd+S to save"*
-- *"Show me the RealityKit entity state"*
+- *"Right-click on the table row"*
 - *"Test the login flow end-to-end"*
 
 ## Features
@@ -99,22 +99,24 @@ agentax serve --transport sse         # SSE transport
 
 All output defaults to [TOON](https://github.com/toon-format/toon-swift) (Token-Oriented Object Notation) — achieving 30-60% fewer tokens than JSON by eliminating braces/brackets and using indentation-based hierarchy. JSON is available via `--format json`.
 
-### RealityKit-Aware
+### Custom Content Support
 
-RealityKit entities are invisible to the AX tree by default. When the app under test instruments them with `AccessibilityComponent`, agentax reads `customContent` key-value pairs to expose 3D coordinates, game state, physics data, and any proprietary state the developer injects:
+AgentAX reads `customContent` key-value pairs from any element that uses SwiftUI's `.accessibilityCustomContent()` modifier. This is useful for exposing application-specific state (game data, coordinates, computed values) to agents:
 
 ```swift
-var ax = AccessibilityComponent()
-ax.isAccessibilityElement = true
-ax.label = "Player Character"
-ax.value = "Health: 80%"
-ax.customContent = [
-    .init(label: "position_x", value: "12.5"),
-    .init(label: "position_y", value: "3.0"),
-    .init(label: "position_z", value: "-7.2"),
-]
-entity.components.set(ax)
+Text("Player Character")
+    .accessibilityCustomContent("health", "80%")
+    .accessibilityCustomContent("position_x", "12.5")
+    .accessibilityCustomContent("position_y", "3.0")
 ```
+
+Query with JSONPath:
+```bash
+$..[?(@.customContent)]                    # All elements with custom content
+$..[?(@.customContent.health=='80%')]      # By specific key-value
+```
+
+> **RealityKit on macOS:** RealityKit's `AccessibilityComponent` does NOT bridge entity state into the macOS AX tree. 3D entities inside a `RealityView` are invisible to the AX API regardless of their accessibility configuration. However, all SwiftUI controls surrounding the RealityView (toolbars, lists, labels, buttons) are fully accessible. On visionOS, `AccessibilityComponent` does work natively.
 
 ### MCP Tools
 
@@ -140,7 +142,7 @@ entity.components.set(ax)
 | `dump_tree` | Full AX tree dump (TOON or JSON) |
 | `wait_for_element` | Poll until selector matches (async transitions) |
 | `assert_element_state` | Verify properties — pass/fail for test loops |
-| `get_element_custom_content` | Extract RealityKit customContent |
+| `get_element_custom_content` | Extract customContent key-value pairs |
 | `snapshot_diff` | Capture, act, capture, return diff — single-call test |
 
 All tools that accept `app` also accept `app_name` as an alias. Tools with `depth_limit` also accept `max_depth`. Parameters can be passed as numbers or strings (e.g. `"3"` or `3`).
@@ -149,15 +151,19 @@ All tools that accept `app` also accept `app_name` as an alias. Tools with `dept
 
 ```bash
 $..[?(@.role=='AXButton')]                           # All buttons
-$..[?(@.ax_identifier=='loginButton')]               # By identifier
+$..[?(@.identifier=='loginButton')]                  # By accessibility identifier
 $.processes[?(@.name=='MyApp')]..[?(@.role=='AXButton')]  # App-specific
-$..[?(@.role=='AXTextField' && @.enabled==true)]     # Compound
-$..[?(@.label=='Player Character')]                  # RealityKit entity
+$..[?(@.role=='AXTextField' && @.enabled==true)]     # Compound filter
+$..[?(@.label =~ /submit/i)]                         # Regex match (case-insensitive)
+$..[?(@.customContent)]                              # Elements with custom content
+$..[?(@.customContent.health=='100')]                # Custom content key-value match
 ```
+
+> **Note:** Do NOT use `@.id` in selectors. Element UUIDs are regenerated on every AX tree capture — they will never match in follow-up queries. Use stable attributes: `@.role`, `@.identifier`, `@.title`, `@.label`, `@.value`.
 
 ## Agentic Skills
 
-agentax supports the [Agentic Skills](https://agentskills.io) specification. One command teaches any supported agent how to use agentax:
+AgentAX supports the [Agentic Skills](https://agentskills.io) specification. One command teaches any supported agent how to use AgentAX:
 
 ```bash
 agentax skill install claude-code                # Project-level
@@ -179,15 +185,16 @@ agentax skill update                             # Update all
 
 ## Application Instrumentation
 
-For agentax to test your app effectively:
+For AgentAX to test your app effectively:
 
-1. **SwiftUI views** — Use `.accessibilityIdentifier()` on interactive elements
-2. **RealityKit entities** — Attach `AccessibilityComponent` with `isAccessibilityElement = true`, label, value, traits, and `customContent` for proprietary state
+1. **SwiftUI views** — Use `.accessibilityIdentifier()` on interactive elements so agents can target them reliably
+2. **Custom state** — Use `.accessibilityCustomContent()` to expose application-specific data (game state, computed values, coordinates) that agents can query
 3. **Dynamic content** — Use `.accessibilityValue()` to expose changing state
+4. **RealityKit apps** — The SwiftUI UI around your RealityView (toolbars, lists, inspectors) is fully accessible. 3D entities inside RealityView are not visible on macOS (see [Known Limitations](#known-limitations))
 
 ## Architecture
 
-agentax calls the macOS latest Accessibility (AX) API directly from Swift:
+AgentAX calls the macOS latest Accessibility (AX) API directly from Swift:
 
 - **AX Bridge** — Wraps `AXUIElement*` functions for tree traversal and action execution
 - **State Capture** — Recursive AX tree walk with timeout safety, depth limiting, and UUID-based element mapping for O(1) action resolution
@@ -217,6 +224,12 @@ Git hooks automatically manage SemVer on the `main` branch when `.swift` files c
 - `[release]`: Create GitHub release for patch bumps
 - `[skip-release]`: Skip GitHub release
 - Minor and major bumps always create a GitHub release
+
+## Known Limitations
+
+- **RealityKit on macOS** — `RealityKit.AccessibilityComponent` does not bridge 3D entity state into the macOS AX tree. Entities inside a `RealityView` are invisible to the AX API. This is a macOS platform limitation, not an AgentAX limitation. All SwiftUI controls surrounding the RealityView remain fully accessible. On visionOS, `AccessibilityComponent` works as expected.
+- **Element UUIDs are ephemeral** — The `id` field on each element is a transient UUID regenerated on every AX tree capture. Do not use `@.id` in JSONPath selectors for follow-up queries. Use stable attributes like `@.identifier`, `@.role`, `@.title`, or `@.label` instead.
+- **Depth limit** — Default traversal depth is 50 levels. Very deep SwiftUI view hierarchies may be truncated. Use `depth_limit` parameter to control this.
 
 ## Requirements
 
