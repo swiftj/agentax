@@ -209,7 +209,7 @@ public struct JSONPathSelector: Sendable {
             return element.title.map { .string($0) }
         case "value":
             return element.value.map { .string($0) }
-        case "identifier":
+        case "identifier", "ax_identifier":
             return element.identifier.map { .string($0) }
         case "label":
             return element.label.map { .string($0) }
