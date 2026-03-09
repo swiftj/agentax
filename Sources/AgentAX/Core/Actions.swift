@@ -69,21 +69,42 @@ public final class ActionExecutor {
     }
 
     /// Perform any named AX action on an element (e.g., AXPress, AXConfirm, AXShowMenu).
+    ///
+    /// Custom actions (from SwiftUI `.accessibilityAction(named:)`) are returned by
+    /// `AXUIElementCopyActionNames` as description strings like
+    /// `"Name:Open Actions\n    Target:0x0\n    Selector:(null)"`.
+    /// This method matches user-friendly names (e.g. "Open Actions") against both
+    /// exact action strings and the `Name:` prefix of custom action descriptions.
     public func performAction(elementId: UUID, action: String) throws -> ActionResult {
         let ref = try resolveElement(id: elementId)
 
-        // Verify the action is supported by this element
+        // Verify the action is supported by this element, resolving custom action names
         var actionsRef: CFArray?
         let listResult = AXUIElementCopyActionNames(ref, &actionsRef)
+        let resolvedAction: String
         if listResult == .success, let actions = actionsRef as? [String] {
-            guard actions.contains(action) else {
+            if actions.contains(action) {
+                // Exact match (standard AX actions like "AXPress")
+                resolvedAction = action
+            } else if let match = actions.first(where: { $0.hasPrefix("Name:\(action)\n") || $0 == "Name:\(action)" }) {
+                // Custom action match by Name: prefix
+                resolvedAction = match
+            } else {
+                let displayNames = actions.map { name in
+                    if let range = name.range(of: "\n") {
+                        return String(name[name.startIndex..<range.lowerBound])
+                    }
+                    return name
+                }
                 throw AXError.actionNotSupported(
-                    "\(action) not in supported actions: \(actions.joined(separator: ", "))"
+                    "\(action) not in supported actions: \(displayNames.joined(separator: ", "))"
                 )
             }
+        } else {
+            resolvedAction = action
         }
 
-        let result = AXUIElementPerformAction(ref, action as CFString)
+        let result = AXUIElementPerformAction(ref, resolvedAction as CFString)
 
         guard result == .success else {
             return ActionResult(

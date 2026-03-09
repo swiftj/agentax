@@ -325,7 +325,17 @@ public final class AXBridge {
         var names: CFArray?
         let result = AXUIElementCopyActionNames(element, &names)
         guard result == .success, let actionNames = names as? [String] else { return [] }
-        return actionNames
+        // Custom actions from SwiftUI .accessibilityAction(named:) are returned as
+        // description strings like "Name:Open Actions\n    Target:0x0\n    Selector:(null)".
+        // Extract clean display names so agents see usable action names.
+        return actionNames.map { name in
+            if name.hasPrefix("Name:"), let newlineRange = name.range(of: "\n") {
+                return String(name[name.index(name.startIndex, offsetBy: 5)..<newlineRange.lowerBound])
+            } else if name.hasPrefix("Name:") {
+                return String(name.dropFirst(5))
+            }
+            return name
+        }
     }
 
     private func getChildren(_ element: AXUIElement) -> [AXUIElement] {
