@@ -1,7 +1,7 @@
 import Foundation
 
 /// Single source of truth for the agentax version.
-public let agentaxVersion = "0.2.3"
+public let agentaxVersion = "0.2.4"
 
 /// Constants for AX attribute and action names used throughout the bridge.
 public enum AXTypes {
@@ -23,6 +23,7 @@ public enum AXTypes {
     public static let menuBar = "AXMenuBar"
     public static let frontmost = "AXFrontmost"
     public static let hidden = "AXHidden"
+    public static let parent = "AXParent"
 
     // MARK: - Actions
     public static let pressAction = "AXPress"
